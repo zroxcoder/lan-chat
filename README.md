@@ -14,6 +14,9 @@
 ## 🔧 Installation Steps
 
 ### 1️⃣ **Install Dependencies**
+```bash
+npm install
+```
 
 ```bash
 npm install express socket.io express-fileupload
