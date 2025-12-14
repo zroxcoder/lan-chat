@@ -1,14 +1,4 @@
 # 🚀 LAN Chat Messenger - Complete Setup Guide
-
-## 📋 What I Fixed
-
-### ✅ **All Issues Resolved:**
-1. **Private Messaging** - Now working perfectly with proper room management
-2. **Channel Creation** - Fixed and broadcasts to all users immediately
-3. **Voice Messages** - Works on HTTPS with clear HTTP warnings
-4. **Video/Audio Calls** - Properly configured WebRTC with STUN servers
-5. **Enhanced Logging** - Server now shows detailed logs for debugging
-
 ---
 
 ## 🔧 Installation Steps
