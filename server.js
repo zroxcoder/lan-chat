@@ -1,4 +1,4 @@
-// server.js - COMPLETELY FIXED VERSION
+// server.js - FINAL VERSION (Without Call Features)
 const express = require("express");
 const https = require("https");
 const http = require("http");
@@ -46,7 +46,6 @@ function leaveAllRooms(socket, exceptRoom) {
     Array.from(socket.rooms).forEach(r => {
         if (r !== socket.id && r !== exceptRoom) {
             socket.leave(r);
-            console.log(`  🚪 Left room: ${r}`);
         }
     });
 }
@@ -56,7 +55,6 @@ let server;
 const PORT = process.env.PORT || 3000;
 let isHttps = false;
 
-// Try HTTPS first, fallback to HTTP
 if (fs.existsSync("key.pem") && fs.existsSync("cert.pem")) {
     try {
         const privateKey = fs.readFileSync("key.pem", "utf8");
@@ -92,22 +90,26 @@ io.on("connection", socket => {
 
     // === JOIN ===
     socket.on("join", username => {
-        console.log(`\n👤 Join request from: ${username}`);
+        console.log(`👤 Join request from: ${username}`);
         
-        // Check if username already exists
-        if (usersByName[username]) {
+        // Check if username already exists AND is a different socket
+        if (usersByName[username] && usersByName[username] !== socket.id) {
             console.log(`❌ Username '${username}' already taken`);
             return socket.emit("joinFail", `Username '${username}' is already taken.`);
         }
+        
+        // Remove old user if reconnecting with same socket
+        const oldUser = usersBySocket[socket.id];
+        if (oldUser && oldUser.username !== username) {
+            delete usersByName[oldUser.username];
+        }
 
-        // Register user
         usersBySocket[socket.id] = {
             username,
             avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(username)}&background=667eea&color=fff&bold=true`
         };
         usersByName[username] = socket.id;
 
-        // Join General channel by default
         leaveAllRooms(socket, "General");
         socket.join("General");
 
@@ -117,12 +119,13 @@ io.on("connection", socket => {
         io.emit("updateUserList", usersBySocket);
         socket.emit("channelList", Object.keys(channels));
 
-        // Send welcome message
         const welcome = {
             type: "system",
             content: `${username} joined General`,
             room: "General",
-            timestamp: new Date().toLocaleTimeString()
+            sender: usersBySocket[socket.id],
+            timestamp: new Date().toLocaleTimeString(),
+            isPrivate: false
         };
 
         messages.General = messages.General || [];
@@ -130,54 +133,37 @@ io.on("connection", socket => {
         io.to("General").emit("receiveMessage", welcome);
     });
 
-    // === SEND MESSAGE - CRITICAL FIX ===
+    // === SEND MESSAGE ===
     socket.on("sendMessage", data => {
         const user = usersBySocket[socket.id];
-        if (!user) {
-            console.log(`❌ Message from unregistered socket: ${socket.id}`);
-            return;
-        }
-
-        console.log(`\n💬 Message from ${user.username}:`);
-        console.log(`   Room: ${data.room}`);
-        console.log(`   Private: ${data.isPrivate}`);
-        console.log(`   Type: ${data.type}`);
+        if (!user) return;
 
         let targetRoom = data.room;
 
-        // CRITICAL FIX: Handle private messaging
         if (data.isPrivate) {
             const recipientUsername = data.room;
             const recipientSocketId = usersByName[recipientUsername];
             
-            console.log(`   Recipient: ${recipientUsername}`);
-            console.log(`   Recipient Socket: ${recipientSocketId}`);
-            
             if (!recipientSocketId) {
-                console.log(`   ❌ Recipient offline`);
                 return socket.emit("receiveMessage", {
                     type: "system",
                     content: `User ${recipientUsername} is offline.`,
-                    room: recipientUsername, // Keep original room name for UI
+                    room: recipientUsername,
+                    isPrivate: true,
+                    sender: user,
                     timestamp: new Date().toLocaleTimeString()
                 });
             }
             
-            // Generate private room ID
             targetRoom = getPrivateRoom(user.username, recipientUsername);
-            console.log(`   Private Room ID: ${targetRoom}`);
             
-            // Ensure sender is in the room
             if (!socket.rooms.has(targetRoom)) {
                 socket.join(targetRoom);
-                console.log(`   ✅ Sender joined private room`);
             }
             
-            // Ensure recipient is in the room
             const recipientSocket = io.sockets.sockets.get(recipientSocketId);
             if (recipientSocket && !recipientSocket.rooms.has(targetRoom)) {
                 recipientSocket.join(targetRoom);
-                console.log(`   ✅ Recipient joined private room`);
             }
         }
 
@@ -187,42 +173,41 @@ io.on("connection", socket => {
             content: data.content,
             timestamp: new Date().toLocaleTimeString(),
             isPrivate: data.isPrivate,
-            room: data.isPrivate ? data.room : targetRoom  // CRITICAL: Use original room name for private chats
+            room: data.isPrivate ? data.room : targetRoom
         };
 
-        // Store message
         messages[targetRoom] = messages[targetRoom] || [];
         messages[targetRoom].push(msg);
 
-        // Broadcast to room
+        if (messages[targetRoom].length > 100) {
+            messages[targetRoom].shift();
+        }
+
         io.to(targetRoom).emit("receiveMessage", msg);
-        console.log(`   ✅ Message sent to room: ${targetRoom}`);
     });
 
-    // === JOIN CHANNEL - FIXED ===
+    // === JOIN CHANNEL ===
     socket.on("joinChannel", ({ name, password }) => {
         const user = usersBySocket[socket.id];
         if (!user) return;
 
-        console.log(`\n📢 ${user.username} joining channel: ${name}`);
+        console.log(`📢 ${user.username} joining channel: ${name}`);
 
         if (!channels[name]) {
-            console.log(`   ❌ Channel doesn't exist`);
+            console.log(`❌ Channel doesn't exist`);
             return socket.emit("joinFail", `Channel '${name}' does not exist.`);
         }
 
         if (channels[name].password && channels[name].password !== password) {
-            console.log(`   ❌ Wrong password`);
+            console.log(`❌ Wrong password`);
             return socket.emit("joinFail", "Wrong password for channel.");
         }
 
         leaveAllRooms(socket, name);
         socket.join(name);
-        console.log(`   ✅ Joined channel: ${name}`);
+        console.log(`✅ Joined channel: ${name}`);
 
-        // Send message history
         if (messages[name]) {
-            console.log(`   📜 Sending ${messages[name].length} messages`);
             messages[name].forEach(m => socket.emit("receiveMessage", m));
         }
 
@@ -230,118 +215,80 @@ io.on("connection", socket => {
             type: "system",
             content: `You joined ${name}`,
             room: name,
-            timestamp: new Date().toLocaleTimeString()
+            sender: user,
+            timestamp: new Date().toLocaleTimeString(),
+            isPrivate: false
         });
     });
 
-    // === CREATE CHANNEL - FIXED ===
+    // === CREATE CHANNEL ===
     socket.on("createChannel", ({ name, password }) => {
         const user = usersBySocket[socket.id];
         if (!user) return;
 
-        console.log(`\n🆕 Creating channel: ${name} by ${user.username}`);
-        console.log(`   Password: ${password ? 'Yes' : 'No'}`);
+        console.log(`🆕 Creating channel: ${name} by ${user.username}`);
 
         if (channels[name]) {
-            console.log(`   ❌ Channel already exists`);
+            console.log(`❌ Channel already exists`);
             return socket.emit("joinFail", `Channel '${name}' already exists.`);
         }
 
         channels[name] = { password: password || null };
-        messages[name] = []; // Initialize message array
+        messages[name] = [];
         
-        console.log(`   ✅ Channel created successfully`);
-        
-        // Broadcast updated channel list to ALL users
+        console.log(`✅ Channel created successfully`);
         io.emit("channelList", Object.keys(channels));
         
-        // Automatically join the creator to the new channel
         leaveAllRooms(socket, name);
         socket.join(name);
         
         socket.emit("receiveMessage", {
             type: "system",
-            content: `Channel '${name}' created successfully. You have been added to it.`,
+            content: `Channel '${name}' created. You have been added.`,
             room: name,
-            timestamp: new Date().toLocaleTimeString()
+            sender: user,
+            timestamp: new Date().toLocaleTimeString(),
+            isPrivate: false
         });
     });
 
-    // === JOIN PRIVATE CHAT - FIXED ===
+    // === JOIN PRIVATE CHAT ===
     socket.on("joinPrivate", otherUsername => {
         const user = usersBySocket[socket.id];
         if (!user) return;
 
-        console.log(`\n💬 ${user.username} opening private chat with ${otherUsername}`);
+        console.log(`💬 ${user.username} opening private chat with ${otherUsername}`);
 
         const otherSocketId = usersByName[otherUsername];
         if (!otherSocketId) {
-            console.log(`   ❌ User offline`);
+            console.log(`❌ User offline`);
             return socket.emit("receiveMessage", {
                 type: "system",
                 content: `User ${otherUsername} is offline.`,
                 room: otherUsername,
-                timestamp: new Date().toLocaleTimeString()
+                sender: user,
+                timestamp: new Date().toLocaleTimeString(),
+                isPrivate: true
             });
         }
 
         const roomId = getPrivateRoom(user.username, otherUsername);
-        console.log(`   Private Room ID: ${roomId}`);
+        console.log(`💬 Private Room ID: ${roomId}`);
         
         leaveAllRooms(socket, roomId);
         socket.join(roomId);
-        console.log(`   ✅ ${user.username} joined private room`);
 
-        // Ensure the other user is in the room too
         const otherSocket = io.sockets.sockets.get(otherSocketId);
         if (otherSocket && !otherSocket.rooms.has(roomId)) {
             otherSocket.join(roomId);
-            console.log(`   ✅ ${otherUsername} added to private room`);
         }
 
-        // Send message history
         if (messages[roomId]) {
-            console.log(`   📜 Sending ${messages[roomId].length} messages`);
-            // CRITICAL FIX: Send messages with correct room name for UI
             messages[roomId].forEach(m => {
                 const msgCopy = { ...m, room: otherUsername };
                 socket.emit("receiveMessage", msgCopy);
             });
-        } else {
-            console.log(`   📜 No message history`);
         }
-    });
-
-    // === WebRTC SIGNALING ===
-    socket.on("callUser", data => {
-        const user = usersBySocket[socket.id];
-        if (!user) return;
-
-        const recipientSocketId = usersByName[data.userToCall];
-        if (recipientSocketId) {
-            io.to(recipientSocketId).emit("incomingCall", {
-                signal: data.signalData,
-                name: user.username,
-                fromSocketId: socket.id,
-                video: data.video
-            });
-            console.log(`📞 ${user.username} calling ${data.userToCall}`);
-        }
-    });
-
-    socket.on("answerCall", data => {
-        io.to(data.toSocketId).emit("callAnswered", { signal: data.signal });
-        console.log(`✅ Call answered`);
-    });
-
-    socket.on("rejectCall", data => {
-        io.to(data.toSocketId).emit("callEnded");
-        console.log(`❌ Call rejected`);
-    });
-
-    socket.on("endCall", data => {
-        io.to(data.toSocketId).emit("callEnded");
-        console.log(`📴 Call ended`);
     });
 
     // === DISCONNECT ===
@@ -349,9 +296,27 @@ io.on("connection", socket => {
         const user = usersBySocket[socket.id];
         if (user) {
             console.log(`\n❌ ${user.username} disconnected`);
+            
+            // Remove from tracking
             delete usersByName[user.username];
             delete usersBySocket[socket.id];
+            
+            // Notify all users of updated list
             io.emit("updateUserList", usersBySocket);
+            
+            // Send disconnect notification to General channel
+            const disconnect = {
+                type: "system",
+                content: `${user.username} left`,
+                room: "General",
+                sender: user,
+                timestamp: new Date().toLocaleTimeString(),
+                isPrivate: false
+            };
+            
+            messages.General = messages.General || [];
+            messages.General.push(disconnect);
+            io.to("General").emit("receiveMessage", disconnect);
         }
     });
 });
@@ -360,7 +325,7 @@ io.on("connection", socket => {
 app.post("/upload", (req, res) => {
     try {
         if (!req.files || !req.files.file) {
-            return res.status(400).json({ error: "No files were uploaded." });
+            return res.status(400).json({ error: "No files uploaded" });
         }
 
         const file = req.files.file;
@@ -371,10 +336,10 @@ app.post("/upload", (req, res) => {
         file.mv(uploadPath, err => {
             if (err) {
                 console.error("Upload error:", err);
-                return res.status(500).json({ error: "Upload failed: " + err.message });
+                return res.status(500).json({ error: "Upload failed" });
             }
 
-            console.log(`📎 File uploaded: ${filename} (${(file.size / 1024 / 1024).toFixed(2)}MB)`);
+            console.log(`📎 File uploaded: ${filename} (${(file.size / 1024).toFixed(2)}KB)`);
             res.json({
                 url: `/uploads/${filename}`,
                 type: file.mimetype,
@@ -383,7 +348,7 @@ app.post("/upload", (req, res) => {
         });
     } catch (error) {
         console.error("Upload error:", error);
-        res.status(500).json({ error: "Upload failed: " + error.message });
+        res.status(500).json({ error: "Upload failed" });
     }
 });
 
@@ -416,19 +381,18 @@ server.listen(PORT, "0.0.0.0", () => {
     console.log(`\n${"=".repeat(60)}`);
     if (!isHttps) {
         console.log(`\n⚠️  RUNNING IN HTTP MODE`);
-        console.log(`   Voice messages & calls require HTTPS!`);
+        console.log(`   Voice messages require HTTPS!`);
         console.log(`\n📝 To enable HTTPS, generate certificates:`);
         console.log(`   openssl req -x509 -newkey rsa:2048 -nodes \\`);
         console.log(`           -keyout key.pem -out cert.pem -days 365`);
-        console.log(`\n   Then restart the servera.`);
+        console.log(`\n   Then restart the server.`);
         console.log(`${"=".repeat(60)}\n`);
     } else {
         console.log(`\n✅ HTTPS ENABLED - All features available!`);
-        console.log(`${"a=".repeat(60)}\n`);
+        console.log(`${"=".repeat(60)}\n`);
     }
-});1
+});
 
-// === Error Handling ===
 process.on('uncaughtException', (err) => {
     console.error('❌ Uncaught Exception:', err);
 });
