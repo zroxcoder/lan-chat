@@ -524,14 +524,9 @@ function join(isReconnect = false) {
 }
 
 socket.on("joinSuccess", () => {
-    console.log("✅ Join successful for user:", myUsername);
     document.getElementById("login").style.display = "none";
     document.getElementById("app").style.display = "flex";
-    
-    // Small delay to ensure UI is rendered
-    setTimeout(() => {
-        switchChatUIOnly("General", false);
-    }, 100);
+    switchChatUIOnly("General", false);
 });
 
 function updateActiveUserAndChannel(roomTitle, isPrivateChat) {
@@ -562,12 +557,9 @@ socket.on("updateUserList", list => {
         const item = document.createElement("div");
         item.className = "user-item";
         item.innerHTML = `<img src="${u.avatar}" class="avatar"><span>${u.username}</span>`;
-        item.onclick = () => {
-            switchChat(u.username, true);
-        };
+        item.onclick = () => switchChat(u.username, true);
         div.appendChild(item);
     });
-    
     updateActiveUserAndChannel(currentRoom, isPrivate);
 });
 
@@ -579,12 +571,9 @@ socket.on("channelList", list => {
         const item = document.createElement("div");
         item.className = "channel-item";
         item.innerHTML = `<i class="fa-solid fa-hashtag"></i> ${c}`;
-        item.onclick = () => {
-            switchChat(c, false);
-        };
+        item.onclick = () => switchChat(c, false);
         div.appendChild(item);
     });
-    
     updateActiveUserAndChannel(currentRoom, isPrivate);
 });
 
