@@ -1,7 +1,6 @@
-// server.js - FINAL VERSION (Without Call Features)
+// server.js - FINAL VERSION (Without Call Features, HTTP mode for Cloudflare Tunnel)
 const express = require("express");
-const https = require("https");
-const http = require("http");
+const http = require("http"); // Only HTTP now
 const { Server } = require("socket.io");
 const fileUpload = require("express-fileupload");
 const path = require("path");
@@ -50,28 +49,10 @@ function leaveAllRooms(socket, exceptRoom) {
     });
 }
 
-// === HTTPS/HTTP Setup with Auto-Detection ===
-let server;
+// === HTTP Setup for Cloudflare Tunnel ===
 const PORT = process.env.PORT || 3000;
-let isHttps = false;
-
-if (fs.existsSync("key.pem") && fs.existsSync("cert.pem")) {
-    try {
-        const privateKey = fs.readFileSync("key.pem", "utf8");
-        const certificate = fs.readFileSync("cert.pem", "utf8");
-        const credentials = { key: privateKey, cert: certificate };
-        server = https.createServer(credentials, app);
-        isHttps = true;
-        console.log("🔒 HTTPS mode enabled");
-    } catch (e) {
-        console.log("⚠️  SSL certificate error, falling back to HTTP:", e.message);
-        server = http.createServer(app);
-    }
-} else {
-    console.log("⚠️  SSL certificates not found (key.pem, cert.pem)");
-    console.log("📝 Generate with: openssl req -x509 -newkey rsa:2048 -nodes -keyout key.pem -out cert.pem -days 365");
-    server = http.createServer(app);
-}
+const server = http.createServer(app);
+console.log("⚠️  Running in HTTP mode for Cloudflare Tunnel");
 
 // === Socket.IO Setup ===
 const io = new Server(server, {
@@ -88,17 +69,14 @@ const io = new Server(server, {
 io.on("connection", socket => {
     console.log(`\n✅ New connection: ${socket.id}`);
 
-    // === JOIN ===
     socket.on("join", username => {
         console.log(`👤 Join request from: ${username}`);
         
-        // Check if username already exists AND is a different socket
         if (usersByName[username] && usersByName[username] !== socket.id) {
             console.log(`❌ Username '${username}' already taken`);
             return socket.emit("joinFail", `Username '${username}' is already taken.`);
         }
         
-        // Remove old user if reconnecting with same socket
         const oldUser = usersBySocket[socket.id];
         if (oldUser && oldUser.username !== username) {
             delete usersByName[oldUser.username];
@@ -133,7 +111,6 @@ io.on("connection", socket => {
         io.to("General").emit("receiveMessage", welcome);
     });
 
-    // === SEND MESSAGE ===
     socket.on("sendMessage", data => {
         const user = usersBySocket[socket.id];
         if (!user) return;
@@ -157,14 +134,10 @@ io.on("connection", socket => {
             
             targetRoom = getPrivateRoom(user.username, recipientUsername);
             
-            if (!socket.rooms.has(targetRoom)) {
-                socket.join(targetRoom);
-            }
+            if (!socket.rooms.has(targetRoom)) socket.join(targetRoom);
             
             const recipientSocket = io.sockets.sockets.get(recipientSocketId);
-            if (recipientSocket && !recipientSocket.rooms.has(targetRoom)) {
-                recipientSocket.join(targetRoom);
-            }
+            if (recipientSocket && !recipientSocket.rooms.has(targetRoom)) recipientSocket.join(targetRoom);
         }
 
         const msg = {
@@ -179,14 +152,11 @@ io.on("connection", socket => {
         messages[targetRoom] = messages[targetRoom] || [];
         messages[targetRoom].push(msg);
 
-        if (messages[targetRoom].length > 100) {
-            messages[targetRoom].shift();
-        }
+        if (messages[targetRoom].length > 100) messages[targetRoom].shift();
 
         io.to(targetRoom).emit("receiveMessage", msg);
     });
 
-    // === JOIN CHANNEL ===
     socket.on("joinChannel", ({ name, password }) => {
         const user = usersBySocket[socket.id];
         if (!user) return;
@@ -207,9 +177,7 @@ io.on("connection", socket => {
         socket.join(name);
         console.log(`✅ Joined channel: ${name}`);
 
-        if (messages[name]) {
-            messages[name].forEach(m => socket.emit("receiveMessage", m));
-        }
+        if (messages[name]) messages[name].forEach(m => socket.emit("receiveMessage", m));
 
         socket.emit("receiveMessage", {
             type: "system",
@@ -221,7 +189,6 @@ io.on("connection", socket => {
         });
     });
 
-    // === CREATE CHANNEL ===
     socket.on("createChannel", ({ name, password }) => {
         const user = usersBySocket[socket.id];
         if (!user) return;
@@ -252,7 +219,6 @@ io.on("connection", socket => {
         });
     });
 
-    // === JOIN PRIVATE CHAT ===
     socket.on("joinPrivate", otherUsername => {
         const user = usersBySocket[socket.id];
         if (!user) return;
@@ -279,9 +245,7 @@ io.on("connection", socket => {
         socket.join(roomId);
 
         const otherSocket = io.sockets.sockets.get(otherSocketId);
-        if (otherSocket && !otherSocket.rooms.has(roomId)) {
-            otherSocket.join(roomId);
-        }
+        if (otherSocket && !otherSocket.rooms.has(roomId)) otherSocket.join(roomId);
 
         if (messages[roomId]) {
             messages[roomId].forEach(m => {
@@ -291,20 +255,14 @@ io.on("connection", socket => {
         }
     });
 
-    // === DISCONNECT ===
     socket.on("disconnect", () => {
         const user = usersBySocket[socket.id];
         if (user) {
             console.log(`\n❌ ${user.username} disconnected`);
-            
-            // Remove from tracking
             delete usersByName[user.username];
             delete usersBySocket[socket.id];
-            
-            // Notify all users of updated list
             io.emit("updateUserList", usersBySocket);
-            
-            // Send disconnect notification to General channel
+
             const disconnect = {
                 type: "system",
                 content: `${user.username} left`,
@@ -324,9 +282,7 @@ io.on("connection", socket => {
 // === FILE UPLOAD API ===
 app.post("/upload", (req, res) => {
     try {
-        if (!req.files || !req.files.file) {
-            return res.status(400).json({ error: "No files uploaded" });
-        }
+        if (!req.files || !req.files.file) return res.status(400).json({ error: "No files uploaded" });
 
         const file = req.files.file;
         const ext = path.extname(file.name) || '.bin';
@@ -334,17 +290,10 @@ app.post("/upload", (req, res) => {
         const uploadPath = path.join(UPLOAD_DIR, filename);
 
         file.mv(uploadPath, err => {
-            if (err) {
-                console.error("Upload error:", err);
-                return res.status(500).json({ error: "Upload failed" });
-            }
+            if (err) return res.status(500).json({ error: "Upload failed" });
 
             console.log(`📎 File uploaded: ${filename} (${(file.size / 1024).toFixed(2)}KB)`);
-            res.json({
-                url: `/uploads/${filename}`,
-                type: file.mimetype,
-                size: file.size
-            });
+            res.json({ url: `/uploads/${filename}`, type: file.mimetype, size: file.size });
         });
     } catch (error) {
         console.error("Upload error:", error);
@@ -359,44 +308,27 @@ app.get("/", (req, res) => {
 
 // === START SERVER ===
 server.listen(PORT, "0.0.0.0", () => {
-    const protocol = isHttps ? "https" : "http";
     console.log(`\n${"=".repeat(60)}`);
     console.log(`🚀 LAN MESSENGER SERVER STARTED`);
     console.log(`${"=".repeat(60)}`);
-    console.log(`📡 Protocol: ${protocol.toUpperCase()}`);
+    console.log(`📡 Protocol: HTTP`);
     console.log(`🔌 Port: ${PORT}`);
     console.log(`${"=".repeat(60)}`);
     console.log(`\n🌐 ACCESS FROM:\n`);
-    console.log(`   📱 This device: ${protocol}://localhost:${PORT}`);
+    console.log(`   📱 This device: http://localhost:${PORT}`);
     
     const interfaces = os.networkInterfaces();
     Object.keys(interfaces).forEach(name => {
         interfaces[name].forEach(iface => {
             if (iface.family === 'IPv4' && !iface.internal) {
-                console.log(`   🌍 Network (${name}): ${protocol}://${iface.address}:${PORT}`);
+                console.log(`   🌍 Network (${name}): http://${iface.address}:${PORT}`);
             }
         });
     });
-    
-    console.log(`\n${"=".repeat(60)}`);
-    if (!isHttps) {
-        console.log(`\n⚠️  RUNNING IN HTTP MODE`);
-        console.log(`   Voice messages require HTTPS!`);
-        console.log(`\n📝 To enable HTTPS, generate certificates:`);
-        console.log(`   openssl req -x509 -newkey rsa:2048 -nodes \\`);
-        console.log(`           -keyout key.pem -out cert.pem -days 365`);
-        console.log(`\n   Then restart the server.`);
-        console.log(`${"=".repeat(60)}\n`);
-    } else {
-        console.log(`\n✅ HTTPS ENABLED - All features available!`);
-        console.log(`${"=".repeat(60)}\n`);
-    }
+
+    console.log(`\n⚠️  RUNNING IN HTTP MODE FOR CLOUDFLARE TUNNEL`);
+    console.log(`${"=".repeat(60)}\n`);
 });
 
-process.on('uncaughtException', (err) => {
-    console.error('❌ Uncaught Exception:', err);
-});
-
-process.on('unhandledRejection', (reason, promise) => {
-    console.error('❌ Unhandled Rejection:', reason);
-});
+process.on('uncaughtException', (err) => console.error('❌ Uncaught Exception:', err));
+process.on('unhandledRejection', (reason, promise) => console.error('❌ Unhandled Rejection:', reason));
