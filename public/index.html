@@ -2,23 +2,27 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>LAN Messenger</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <style>
-:root { 
-    --bg: #0a0e27;
-    --sidebar: #151932;
-    --chat-bg: #0f1229;
+:root {
+    --vh: 1vh;
+    --bg: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    --sidebar: rgba(255, 255, 255, 0.1);
+    --chat-bg: rgba(255, 255, 255, 0.05);
     --primary: #667eea;
     --accent: #48bb78;
-    --text: #e2e8f0;
-    --text-muted: #94a3b8;
-    --msg-in: #1e293b;
-    --msg-out: #667eea;
-    --input-bg: #1e293b;
-    --separator: #2d3748;
-    --danger: #f56565;
+    --text: #ffffff;
+    --text-muted: rgba(255,255,255,0.7);
+    --msg-in: rgba(255, 255, 255, 0.1);
+    --msg-out: linear-gradient(135deg, #667eea, #764ba2);
+    --input-bg: rgba(255, 255, 255, 0.1);
+    --separator: rgba(255,255,255,0.2);
+    --danger: #ff6b6b;
+    --success: #48bb78;
+    --glass: rgba(255, 255, 255, 0.1);
+    --glass-border: rgba(255, 255, 255, 0.2);
 }
 
 * {
@@ -31,12 +35,14 @@
 html, body {
     width: 100%;
     height: 100%;
+    overflow: hidden;
+    position: fixed;
 }
 
 body {
     background: var(--bg);
     color: var(--text);
-    overflow: hidden; 
+    height: calc(var(--vh, 1vh) * 100);
     display: flex;
     flex-direction: column;
 }
@@ -57,15 +63,16 @@ body {
 }
 
 .login-box {
-    background: rgba(255, 255, 255, 0.1);
-    backdrop-filter: blur(10px);
+    background: var(--glass);
+    backdrop-filter: blur(20px);
     padding: 40px 30px;
     border-radius: 20px;
     text-align: center;
     width: 90%;
     max-width: 350px;
     box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-    border: 1px solid rgba(255,255,255,0.2);
+    border: 1px solid var(--glass-border);
+    animation: fadeInUp 0.6s ease-out;
 }
 
 .login-box h2 {
@@ -130,20 +137,25 @@ body {
 
 #app {
     display: none;
-    height: 100%;
+    height: calc(var(--vh, 1vh) * 100);
     width: 100%;
-    display: flex;
-    flex-direction: row;
+    position: relative;
+    overflow: hidden;
 }
 
 .sidebar {
     width: 280px;
     background: var(--sidebar);
+    backdrop-filter: blur(20px);
     display: flex;
     flex-direction: column;
     border-right: 1px solid var(--separator);
     overflow-y: auto;
     flex-shrink: 0;
+    border-radius: 0 20px 20px 0;
+    box-shadow: 0 0 40px rgba(0,0,0,0.2);
+    position: relative;
+    height: 100%;
 }
 
 .chat-area {
@@ -152,17 +164,21 @@ body {
     flex-direction: column;
     background: var(--chat-bg);
     min-width: 0;
+    height: 100%;
+    position: relative;
 }
 
 .header {
     padding: 15px 18px;
-    background: var(--sidebar);
+    background: var(--glass);
+    backdrop-filter: blur(10px);
     display: flex;
     align-items: center;
     justify-content: space-between;
     border-bottom: 1px solid var(--separator);
     height: 60px;
     flex-shrink: 0;
+    border-radius: 0 0 20px 20px;
 }
 
 .section-label {
@@ -210,11 +226,14 @@ body {
 #messages {
     flex: 1;
     overflow-y: auto;
+    overflow-x: hidden;
     padding: 16px;
     display: flex;
     flex-direction: column;
     gap: 8px;
     background: var(--chat-bg);
+    backdrop-filter: blur(5px);
+    -webkit-overflow-scrolling: touch;
 }
 
 .msg {
@@ -226,6 +245,9 @@ body {
     overflow-wrap: break-word;
     box-shadow: 0 2px 8px rgba(0,0,0,0.1);
     word-break: break-word;
+    animation: slideIn 0.3s ease-out;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255,255,255,0.1);
 }
 
 .msg.self {
@@ -253,8 +275,8 @@ body {
 }
 
 .media-container {
-    max-width: 240px;
-    max-height: 240px;
+    max-width: 280px;
+    max-height: 280px;
     margin-top: 6px;
     border-radius: 10px;
     overflow: hidden;
@@ -287,13 +309,15 @@ body {
 }
 
 .input-area {
-    background: var(--sidebar);
+    background: var(--glass);
+    backdrop-filter: blur(10px);
     padding: 12px;
     display: flex;
     align-items: center;
     gap: 8px;
     flex-shrink: 0;
     border-top: 1px solid var(--separator);
+    border-radius: 20px 20px 0 0;
 }
 
 .input-area input {
@@ -305,6 +329,7 @@ body {
     color: var(--text);
     outline: none;
     font-size: 14px;
+    min-width: 0;
 }
 
 .input-area input:focus {
@@ -345,60 +370,170 @@ body {
     animation: pulse 1.5s infinite;
 }
 
+#menu-btn {
+    display: none;
+}
+
+#close-btn {
+    display: none;
+}
+
+#sticker-picker {
+    display: none;
+    position: fixed;
+    bottom: 70px;
+    right: 10px;
+    background: var(--glass);
+    backdrop-filter: blur(10px);
+    border-radius: 12px;
+    padding: 10px;
+    max-width: 300px;
+    z-index: 1000;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+/* Mobile Styles */
 @media(max-width: 768px) {
+    #app {
+        display: flex;
+        flex-direction: row;
+    }
+    
     .sidebar {
         position: fixed;
-        left: 0;
+        left: -100%;
         top: 0;
-        height: 100vh;
-        width: 260px;
-        z-index: 999;
-        transform: translateX(-100%);
-        transition: transform 0.3s ease-in-out;
-        box-shadow: 2px 0 20px rgba(0,0,0,0.5);
+        height: 100%;
+        width: 75%;
+        max-width: 280px;
+        z-index: 1002;
+        transition: left 0.3s ease;
+        border-radius: 0 20px 20px 0;
     }
     
     .sidebar.show {
-        transform: translateX(0);
+        left: 0;
+    }
+    
+    .chat-area {
+        width: 100%;
+        flex: 1;
     }
     
     #menu-btn {
-        display: flex !important;
+        display: flex;
+    }
+    
+    #close-btn {
+        display: flex;
+        position: absolute;
+        top: 15px;
+        right: 15px;
+        z-index: 10;
+    }
+    
+    .sidebar-overlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.5);
+        z-index: 1001;
+    }
+    
+    .sidebar-overlay.show {
+        display: block;
     }
     
     .msg {
-        max-width: 80%;
+        max-width: 85%;
+        font-size: 13px;
     }
     
     .media-container {
-        max-width: 180px;
-        max-height: 180px;
+        max-width: 200px;
+        max-height: 200px;
+    }
+    
+    #sticker-picker {
+        bottom: 65px;
+        right: 5px;
+        left: 5px;
+        max-width: calc(100% - 10px);
+        max-height: 250px;
+        padding: 8px;
+    }
+}
+
+@media(max-width: 480px) {
+    .sidebar {
+        width: 80%;
+        max-width: 240px;
+    }
+    
+    .login-box {
+        width: 95%;
+        padding: 30px 20px;
+    }
+    
+    .login-box h2 {
+        font-size: 24px;
+    }
+    
+    .input-area {
+        padding: 8px;
+        gap: 6px;
+    }
+    
+    .input-area input {
+        font-size: 13px;
+        padding: 8px 12px;
+    }
+    
+    .icon-btn {
+        font-size: 16px;
+        width: 32px;
+        height: 32px;
+    }
+    
+    .section-label {
+        font-size: 9px;
+    }
+    
+    .user-item, .channel-item {
+        padding: 10px 14px;
+        font-size: 13px;
     }
     
     .header {
-        padding: 12px 14px;
-        height: 55px;
+        padding: 12px;
+        height: 56px;
     }
     
     #messages {
         padding: 12px;
     }
-    
-    .input-area {
-        padding: 10px;
-        gap: 6px;
+}
+
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(30px);
     }
-    
-    .icon-btn {
-        font-size: 16px;
-        width: 34px;
-        height: 34px;
-        padding: 5px;
+    to {
+        opacity: 1;
+        transform: translateY(0);
     }
-    
-    .avatar {
-        width: 32px;
-        height: 32px;
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
     }
 }
 
@@ -406,6 +541,7 @@ body {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.4; }
 }
+
 </style>
 </head>
 <body>
@@ -423,11 +559,24 @@ body {
 <div id="app">
     <div class="sidebar" id="sidebar">
         <div class="header">
-            <h3 style="font-size: 18px; font-weight: 700;">Chats</h3>
+            <button class="icon-btn" onclick="closeSidebar()" id="close-btn">
+                <i class="fa-solid fa-times"></i>
+            </button>
+            <div id="current-user" style="display:flex;align-items:center;gap:10px;padding:10px;border-radius:12px;background:var(--glass);backdrop-filter:blur(10px);cursor:pointer;flex:1;" onclick="document.getElementById('avatar-input').click()">
+                <img id="current-avatar" src="" class="avatar" style="width:40px;height:40px;">
+                <div style="flex:1;">
+                    <div id="current-name" style="font-weight:600;font-size:14px;"></div>
+                    <div style="font-size:10px;color:var(--text-muted);">Online</div>
+                </div>
+                <button class="icon-btn" onclick="logout(event)" title="Logout" style="margin-left:auto;margin-right:5px;">
+                    <i class="fa-solid fa-sign-out-alt"></i>
+                </button>
+                <i class="fa-solid fa-camera" style="font-size:12px;color:var(--text-muted);"></i>
+            </div>
         </div>
         <div class="section-label">
             CHANNELS 
-            <i class="fa-solid fa-plus" style="cursor:pointer;font-size:12px;" onclick="createChannel()"></i>
+            <i class="fa-solid fa-plus icon-btn" onclick="event.stopPropagation(); createChannel();"></i>
         </div>
         <div id="channels"></div>
         <div class="section-label" style="margin-top: 15px;">ONLINE USERS</div>
@@ -437,7 +586,7 @@ body {
     <div class="chat-area">
         <div class="header">
             <div style="display:flex;align-items:center;gap:10px;min-width:0;flex:1;">
-                <button class="icon-btn" id="menu-btn" onclick="toggleSidebar()" style="display:none;">
+                <button class="icon-btn" id="menu-btn" onclick="toggleSidebar()">
                     <i class="fa-solid fa-bars"></i>
                 </button>
                 <div id="chat-title" style="font-weight:700;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">General</div>
@@ -451,6 +600,9 @@ body {
                 <i class="fa-solid fa-paperclip"></i>
             </button>
             <input id="msg-input" placeholder="Type a message..." onkeypress="handleEnter(event)">
+            <button class="icon-btn" onclick="toggleStickerPicker()" title="Send sticker/GIF">
+                <i class="fa-solid fa-smile"></i>
+            </button>
             <button class="icon-btn" id="mic-btn" onmousedown="startVoiceRecord()" onmouseup="stopVoiceRecord()" onmouseleave="stopVoiceRecord()" ontouchstart="startVoiceRecord()" ontouchend="stopVoiceRecord()" ontouchcancel="stopVoiceRecord()" title="Hold to record voice">
                 <i class="fa-solid fa-microphone"></i>
             </button>
@@ -458,7 +610,136 @@ body {
                 <i class="fa-solid fa-paper-plane"></i>
             </button>
         </div>
+        <div id="sticker-picker" style="display:none;position:absolute;bottom:60px;right:10px;background:var(--glass);backdrop-filter:blur(10px);border-radius:12px;padding:10px;max-width:300px;z-index:1000;">
+            <div style="display:flex;flex-wrap:wrap;gap:5px;max-height:200px;overflow-y:auto;">
+                <span onclick="sendSticker('😀')" style="cursor:pointer;font-size:24px;">😀</span>
+                <span onclick="sendSticker('😂')" style="cursor:pointer;font-size:24px;">😂</span>
+                <span onclick="sendSticker('❤️')" style="cursor:pointer;font-size:24px;">❤️</span>
+                <span onclick="sendSticker('👍')" style="cursor:pointer;font-size:24px;">👍</span>
+                <span onclick="sendSticker('🔥')" style="cursor:pointer;font-size:24px;">🔥</span>
+                <span onclick="sendSticker('🎉')" style="cursor:pointer;font-size:24px;">🎉</span>
+                <span onclick="sendSticker('😎')" style="cursor:pointer;font-size:24px;">😎</span>
+                <span onclick="sendSticker('🤔')" style="cursor:pointer;font-size:24px;">🤔</span>
+                <span onclick="sendSticker('😢')" style="cursor:pointer;font-size:24px;">😢</span>
+                <span onclick="sendSticker('👏')" style="cursor:pointer;font-size:24px;">👏</span>
+                <span onclick="sendSticker('💯')" style="cursor:pointer;font-size:24px;">💯</span>
+                <span onclick="sendSticker('🚀')" style="cursor:pointer;font-size:24px;">🚀</span>
+                <span onclick="sendSticker('😊')" style="cursor:pointer;font-size:24px;">😊</span>
+                <span onclick="sendSticker('😍')" style="cursor:pointer;font-size:24px;">😍</span>
+                <span onclick="sendSticker('🥰')" style="cursor:pointer;font-size:24px;">🥰</span>
+                <span onclick="sendSticker('😘')" style="cursor:pointer;font-size:24px;">😘</span>
+                <span onclick="sendSticker('😉')" style="cursor:pointer;font-size:24px;">😉</span>
+                <span onclick="sendSticker('😜')" style="cursor:pointer;font-size:24px;">😜</span>
+                <span onclick="sendSticker('🤪')" style="cursor:pointer;font-size:24px;">🤪</span>
+                <span onclick="sendSticker('😝')" style="cursor:pointer;font-size:24px;">😝</span>
+                <span onclick="sendSticker('🤑')" style="cursor:pointer;font-size:24px;">🤑</span>
+                <span onclick="sendSticker('🤗')" style="cursor:pointer;font-size:24px;">🤗</span>
+                <span onclick="sendSticker('🤭')" style="cursor:pointer;font-size:24px;">🤭</span>
+                <span onclick="sendSticker('🤫')" style="cursor:pointer;font-size:24px;">🤫</span>
+                <span onclick="sendSticker('🤨')" style="cursor:pointer;font-size:24px;">🤨</span>
+                <span onclick="sendSticker('😐')" style="cursor:pointer;font-size:24px;">😐</span>
+                <span onclick="sendSticker('😑')" style="cursor:pointer;font-size:24px;">😑</span>
+                <span onclick="sendSticker('😶')" style="cursor:pointer;font-size:24px;">😶</span>
+                <span onclick="sendSticker('😏')" style="cursor:pointer;font-size:24px;">😏</span>
+                <span onclick="sendSticker('😒')" style="cursor:pointer;font-size:24px;">😒</span>
+                <span onclick="sendSticker('🙄')" style="cursor:pointer;font-size:24px;">🙄</span>
+                <span onclick="sendSticker('😬')" style="cursor:pointer;font-size:24px;">😬</span>
+                <span onclick="sendSticker('🤥')" style="cursor:pointer;font-size:24px;">🤥</span>
+                <span onclick="sendSticker('😔')" style="cursor:pointer;font-size:24px;">😔</span>
+                <span onclick="sendSticker('😪')" style="cursor:pointer;font-size:24px;">😪</span>
+                <span onclick="sendSticker('🤤')" style="cursor:pointer;font-size:24px;">🤤</span>
+                <span onclick="sendSticker('😴')" style="cursor:pointer;font-size:24px;">😴</span>
+                <span onclick="sendSticker('😷')" style="cursor:pointer;font-size:24px;">😷</span>
+                <span onclick="sendSticker('🤒')" style="cursor:pointer;font-size:24px;">🤒</span>
+                <span onclick="sendSticker('🤕')" style="cursor:pointer;font-size:24px;">🤕</span>
+                <span onclick="sendSticker('🤢')" style="cursor:pointer;font-size:24px;">🤢</span>
+                <span onclick="sendSticker('🤮')" style="cursor:pointer;font-size:24px;">🤮</span>
+                <span onclick="sendSticker('🤧')" style="cursor:pointer;font-size:24px;">🤧</span>
+                <span onclick="sendSticker('🥵')" style="cursor:pointer;font-size:24px;">🥵</span>
+                <span onclick="sendSticker('🥶')" style="cursor:pointer;font-size:24px;">🥶</span>
+                <span onclick="sendSticker('🥴')" style="cursor:pointer;font-size:24px;">🥴</span>
+                <span onclick="sendSticker('😵')" style="cursor:pointer;font-size:24px;">😵</span>
+                <span onclick="sendSticker('🤯')" style="cursor:pointer;font-size:24px;">🤯</span>
+                <span onclick="sendSticker('🤠')" style="cursor:pointer;font-size:24px;">🤠</span>
+                <span onclick="sendSticker('🥳')" style="cursor:pointer;font-size:24px;">🥳</span>
+                <span onclick="sendSticker('🥸')" style="cursor:pointer;font-size:24px;">🥸</span>
+                <span onclick="sendSticker('😇')" style="cursor:pointer;font-size:24px;">😇</span>
+                <span onclick="sendSticker('👹')" style="cursor:pointer;font-size:24px;">👹</span>
+                <span onclick="sendSticker('👺')" style="cursor:pointer;font-size:24px;">👺</span>
+                <span onclick="sendSticker('💀')" style="cursor:pointer;font-size:24px;">💀</span>
+                <span onclick="sendSticker('👻')" style="cursor:pointer;font-size:24px;">👻</span>
+                <span onclick="sendSticker('👽')" style="cursor:pointer;font-size:24px;">👽</span>
+                <span onclick="sendSticker('🤖')" style="cursor:pointer;font-size:24px;">🤖</span>
+                <span onclick="sendSticker('🎃')" style="cursor:pointer;font-size:24px;">🎃</span>
+                <span onclick="sendSticker('😺')" style="cursor:pointer;font-size:24px;">😺</span>
+                <span onclick="sendSticker('😸')" style="cursor:pointer;font-size:24px;">😸</span>
+                <span onclick="sendSticker('😹')" style="cursor:pointer;font-size:24px;">😹</span>
+                <span onclick="sendSticker('😻')" style="cursor:pointer;font-size:24px;">😻</span>
+                <span onclick="sendSticker('😼')" style="cursor:pointer;font-size:24px;">😼</span>
+                <span onclick="sendSticker('😽')" style="cursor:pointer;font-size:24px;">😽</span>
+                <span onclick="sendSticker('🙀')" style="cursor:pointer;font-size:24px;">🙀</span>
+                <span onclick="sendSticker('😿')" style="cursor:pointer;font-size:24px;">😿</span>
+                <span onclick="sendSticker('😾')" style="cursor:pointer;font-size:24px;">😾</span>
+                <span onclick="sendSticker('👋')" style="cursor:pointer;font-size:24px;">👋</span>
+                <span onclick="sendSticker('🤚')" style="cursor:pointer;font-size:24px;">🤚</span>
+                <span onclick="sendSticker('🖐️')" style="cursor:pointer;font-size:24px;">🖐️</span>
+                <span onclick="sendSticker('✋')" style="cursor:pointer;font-size:24px;">✋</span>
+                <span onclick="sendSticker('🖖')" style="cursor:pointer;font-size:24px;">🖖</span>
+                <span onclick="sendSticker('👌')" style="cursor:pointer;font-size:24px;">👌</span>
+                <span onclick="sendSticker('🤏')" style="cursor:pointer;font-size:24px;">🤏</span>
+                <span onclick="sendSticker('✌️')" style="cursor:pointer;font-size:24px;">✌️</span>
+                <span onclick="sendSticker('🤞')" style="cursor:pointer;font-size:24px;">🤞</span>
+                <span onclick="sendSticker('🤟')" style="cursor:pointer;font-size:24px;">🤟</span>
+                <span onclick="sendSticker('🤘')" style="cursor:pointer;font-size:24px;">🤘</span>
+                <span onclick="sendSticker('🤙')" style="cursor:pointer;font-size:24px;">🤙</span>
+                <span onclick="sendSticker('👈')" style="cursor:pointer;font-size:24px;">👈</span>
+                <span onclick="sendSticker('👉')" style="cursor:pointer;font-size:24px;">👉</span>
+                <span onclick="sendSticker('👆')" style="cursor:pointer;font-size:24px;">👆</span>
+                <span onclick="sendSticker('🖕')" style="cursor:pointer;font-size:24px;">🖕</span>
+                <span onclick="sendSticker('👇')" style="cursor:pointer;font-size:24px;">👇</span>
+                <span onclick="sendSticker('☝️')" style="cursor:pointer;font-size:24px;">☝️</span>
+                <span onclick="sendSticker('👍')" style="cursor:pointer;font-size:24px;">👍</span>
+                <span onclick="sendSticker('👎')" style="cursor:pointer;font-size:24px;">👎</span>
+                <span onclick="sendSticker('👊')" style="cursor:pointer;font-size:24px;">👊</span>
+                <span onclick="sendSticker('✊')" style="cursor:pointer;font-size:24px;">✊</span>
+                <span onclick="sendSticker('🤛')" style="cursor:pointer;font-size:24px;">🤛</span>
+                <span onclick="sendSticker('🤜')" style="cursor:pointer;font-size:24px;">🤜</span>
+                <span onclick="sendSticker('👏')" style="cursor:pointer;font-size:24px;">👏</span>
+                <span onclick="sendSticker('🙌')" style="cursor:pointer;font-size:24px;">🙌</span>
+                <span onclick="sendSticker('👐')" style="cursor:pointer;font-size:24px;">👐</span>
+                <span onclick="sendSticker('🤲')" style="cursor:pointer;font-size:24px;">🤲</span>
+                <span onclick="sendSticker('🤝')" style="cursor:pointer;font-size:24px;">🤝</span>
+                <span onclick="sendSticker('🙏')" style="cursor:pointer;font-size:24px;">🙏</span>
+                <span onclick="sendSticker('✍️')" style="cursor:pointer;font-size:24px;">✍️</span>
+                <span onclick="sendSticker('💅')" style="cursor:pointer;font-size:24px;">💅</span>
+                <span onclick="sendSticker('🤳')" style="cursor:pointer;font-size:24px;">🤳</span>
+                <span onclick="sendSticker('💪')" style="cursor:pointer;font-size:24px;">💪</span>
+                <span onclick="sendSticker('🦾')" style="cursor:pointer;font-size:24px;">🦾</span>
+                <span onclick="sendSticker('🦿')" style="cursor:pointer;font-size:24px;">🦿</span>
+                <span onclick="sendSticker('🦵')" style="cursor:pointer;font-size:24px;">🦵</span>
+                <span onclick="sendSticker('🦶')" style="cursor:pointer;font-size:24px;">🦶</span>
+                <span onclick="sendSticker('👂')" style="cursor:pointer;font-size:24px;">👂</span>
+                <span onclick="sendSticker('🦻')" style="cursor:pointer;font-size:24px;">🦻</span>
+                <span onclick="sendSticker('👃')" style="cursor:pointer;font-size:24px;">👃</span>
+                <span onclick="sendSticker('🧠')" style="cursor:pointer;font-size:24px;">🧠</span>
+                <span onclick="sendSticker('🫀')" style="cursor:pointer;font-size:24px;">🫀</span>
+                <span onclick="sendSticker('🫁')" style="cursor:pointer;font-size:24px;">🫁</span>
+                <span onclick="sendSticker('🦷')" style="cursor:pointer;font-size:24px;">🦷</span>
+                <span onclick="sendSticker('🦴')" style="cursor:pointer;font-size:24px;">🦴</span>
+                <span onclick="sendSticker('👀')" style="cursor:pointer;font-size:24px;">👀</span>
+                <span onclick="sendSticker('👁️')" style="cursor:pointer;font-size:24px;">👁️</span>
+                <span onclick="sendSticker('👅')" style="cursor:pointer;font-size:24px;">👅</span>
+                <span onclick="sendSticker('👄')" style="cursor:pointer;font-size:24px;">👄</span>
+                <span onclick="sendSticker('💋')" style="cursor:pointer;font-size:24px;">💋</span>
+                <span onclick="sendSticker('🩸')" style="cursor:pointer;font-size:24px;">🩸</span>
+            </div>
+            <div style="margin-top:10px;">
+                <input id="gif-url" placeholder="Paste GIF URL..." style="width:100%;padding:5px;border-radius:5px;border:none;background:var(--input-bg);color:var(--text);">
+                <button onclick="sendGif()" style="margin-top:5px;width:100%;padding:5px;background:var(--primary);color:white;border:none;border-radius:5px;">Send GIF</button>
+            </div>
+        </div>
         <input type="file" id="file-input" hidden onchange="uploadFile()">
+        <input type="file" id="avatar-input" hidden accept="image/*" onchange="uploadAvatar()">
     </div>
 </div>
 
@@ -527,6 +808,11 @@ socket.on("joinSuccess", () => {
     document.getElementById("login").style.display = "none";
     document.getElementById("app").style.display = "flex";
     switchChatUIOnly("General", false);
+    
+    // Set current user
+    document.getElementById("current-name").textContent = myUsername;
+    const avatar = localStorage.getItem('lanMessengerAvatar') || `https://ui-avatars.com/api/?name=${encodeURIComponent(myUsername)}&background=667eea&color=fff&bold=true`;
+    document.getElementById("current-avatar").src = avatar;
 });
 
 function updateActiveUserAndChannel(roomTitle, isPrivateChat) {
@@ -570,8 +856,8 @@ socket.on("channelList", list => {
     list.forEach(c => {
         const item = document.createElement("div");
         item.className = "channel-item";
-        item.innerHTML = `<i class="fa-solid fa-hashtag"></i> ${c}`;
-        item.onclick = () => switchChat(c, false);
+        item.innerHTML = `<i class="fa-solid fa-hashtag"></i> ${c.name} <span style="font-size:10px;color:var(--text-muted);float:right;">${c.members}</span>`;
+        item.onclick = () => switchChat(c.name, false);
         div.appendChild(item);
     });
     updateActiveUserAndChannel(currentRoom, isPrivate);
@@ -609,8 +895,24 @@ socket.on("receiveMessage", msg => {
     }
     
     if (!shouldShow) return;
+    renderMessage(msg);
+    scrollMessages();
+});
 
+socket.on("loadMessages", msgs => {
+    msgs.forEach(msg => renderMessage(msg));
+    scrollMessages();
+});
+
+let messageQueue = [];
+let renderTimeout = null;
+
+function renderMessage(msg) {
     const box = document.getElementById("messages");
+    // Limit to 50 messages for speed
+    if (box.children.length >= 50) {
+        box.removeChild(box.firstChild);
+    }
     const div = document.createElement("div");
     const isMe = msg.sender.username === myUsername;
     div.className = `msg ${msg.type === 'system' ? 'system' : (isMe ? 'self' : 'other')}`;
@@ -629,17 +931,39 @@ socket.on("receiveMessage", msg => {
     }
 
     if (msg.type !== "system") {
+        let ticks = '';
+        if (isMe) {
+            if (msg.readBy && msg.readBy.length > 1) {
+                ticks = '<span style="color:#48bb78;">✓✓</span>';
+            } else {
+                ticks = '<span style="color:var(--text-muted);">✓</span>';
+            }
+        }
         div.innerHTML = `
             <span class="sender-name">${isMe ? 'You' : msg.sender.username}</span>
             ${content}
-            <div style="font-size:10px;color:var(--text-muted);text-align:right;margin-top:3px;">${msg.timestamp}</div>
+            <div style="font-size:10px;color:var(--text-muted);text-align:right;margin-top:3px;display:flex;justify-content:space-between;align-items:center;">
+                <span>${msg.timestamp}</span>
+                ${ticks}
+            </div>
         `;
     } else {
         div.innerHTML = content;
     }
     
     box.appendChild(div);
-    scrollMessages();
+    // Debounced scroll
+    clearTimeout(renderTimeout);
+    renderTimeout = setTimeout(() => scrollMessages(), 100);
+}
+
+// Debounce input for speed
+let inputTimeout = null;
+document.getElementById("msg-input").addEventListener("input", () => {
+    clearTimeout(inputTimeout);
+    inputTimeout = setTimeout(() => {
+        // Optional: Add any processing here if needed
+    }, 100);
 });
 
 function switchChatUIOnly(title, privateChat) {
@@ -655,6 +979,11 @@ function closeSidebar() {
 
 function switchChat(title, privateChat = false) {
     if (currentRoom === title && isPrivate === privateChat) return;
+    
+    if (privateChat && !usersByName[title]) {
+        alert("User is offline");
+        return;
+    }
     
     previousRoom = currentRoom;
     document.getElementById("messages").innerHTML = "";
@@ -677,19 +1006,6 @@ function switchChat(title, privateChat = false) {
     }
     
     closeSidebar();
-    
-    document.addEventListener('click', closeSidebarOnClickOutside, true);
-}
-
-function closeSidebarOnClickOutside(e) {
-    const sidebar = document.getElementById("sidebar");
-    const menuBtn = document.getElementById("menu-btn");
-    
-    if (window.innerWidth <= 768 && sidebar.classList.contains("show")) {
-        if (!sidebar.contains(e.target) && !menuBtn.contains(e.target)) {
-            sidebar.classList.remove("show");
-        }
-    }
 }
 
 function createChannel() {
@@ -697,6 +1013,31 @@ function createChannel() {
     if (!name || !name.trim()) return;
     const password = prompt("Enter Password (optional):");
     socket.emit("createChannel", { name: name.trim(), password: password?.trim() || null });
+}
+
+function uploadAvatar() {
+    const fileInput = document.getElementById("avatar-input");
+    const file = fileInput.files[0];
+    if (!file) return;
+    
+    const form = new FormData();
+    form.append("file", file);
+    
+    fetch("/upload", { method: "POST", body: form })
+        .then(r => r.json())
+        .then(data => {
+            const avatarUrl = data.url;
+            localStorage.setItem('lanMessengerAvatar', avatarUrl);
+            document.getElementById("current-avatar").src = avatarUrl;
+            // Update user list
+            socket.emit("updateAvatar", avatarUrl);
+        })
+        .catch(err => {
+            console.error("Avatar upload error:", err);
+            alert("Avatar upload failed.");
+        });
+    
+    fileInput.value = "";
 }
 
 function uploadFile() {
@@ -738,7 +1079,10 @@ async function startVoiceRecord() {
     
     const isSecure = window.location.protocol === 'https:' || 
                      window.location.hostname === 'localhost' || 
-                     window.location.hostname === '127.0.0.1';
+                     window.location.hostname === '127.0.0.1' ||
+                     /^192\.168\./.test(window.location.hostname) ||
+                     /^10\./.test(window.location.hostname) ||
+                     /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(window.location.hostname);
     
     if (!isSecure) {
         alert("⚠️ Voice messages require HTTPS!");
@@ -748,19 +1092,32 @@ async function startVoiceRecord() {
     try {
         isRecording = true;
         recordingStartTime = Date.now();
-        recordingStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        recordingStream = await navigator.mediaDevices.getUserMedia({ 
+            audio: { 
+                echoCancellation: true, 
+                noiseSuppression: true, 
+                autoGainControl: true,
+                sampleRate: 48000,
+                channelCount: 1
+            } 
+        });
         recordingChunks = [];
         
         const micBtn = document.getElementById("mic-btn");
         micBtn.classList.add("recording");
         document.getElementById("msg-input").placeholder = "🎙️ Recording...";
         
-        let mimeType = 'audio/webm';
-        if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
-            mimeType = 'audio/webm;codecs=opus';
+        let mimeType = 'audio/webm;codecs=opus';
+        if (!MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+            mimeType = 'audio/webm';
         }
         
-        mediaRecorder = new MediaRecorder(recordingStream, { mimeType });
+        const options = {
+            mimeType,
+            audioBitsPerSecond: 192000 // Confirmed 192kbps
+        };
+        
+        mediaRecorder = new MediaRecorder(recordingStream, options);
         
         mediaRecorder.ondataavailable = e => {
             if (e.data.size > 0) recordingChunks.push(e.data);
@@ -836,13 +1193,67 @@ function cleanupRecording() {
 }
 
 function toggleSidebar() {
-    document.getElementById("sidebar").classList.toggle("show");
+    const sidebar = document.getElementById("sidebar");
+    const isShowing = sidebar.classList.contains("show");
+    
+    if (isShowing) {
+        sidebar.classList.remove("show");
+        document.removeEventListener('click', closeSidebarOnClickOutside, true);
+    } else {
+        sidebar.classList.add("show");
+        document.getElementById("sticker-picker").style.display = "none";
+        // Add listener to close when clicking outside
+        setTimeout(() => {
+            document.addEventListener('click', closeSidebarOnClickOutside, true);
+        }, 10); // Small delay to prevent immediate trigger
+    }
+}
+
+function toggleStickerPicker() {
+    const picker = document.getElementById("sticker-picker");
+    picker.style.display = picker.style.display === "none" ? "block" : "none";
+}
+
+function sendSticker(sticker) {
+    socket.emit("sendMessage", {
+        room: currentRoom,
+        isPrivate,
+        type: "text",
+        content: sticker
+    });
+    document.getElementById("sticker-picker").style.display = "none";
+}
+
+function sendGif() {
+    const gifUrl = document.getElementById("gif-url").value.trim();
+    if (!gifUrl) return;
+    socket.emit("sendMessage", {
+        room: currentRoom,
+        isPrivate,
+        type: "image",
+        content: gifUrl
+    });
+    document.getElementById("gif-url").value = "";
+    document.getElementById("sticker-picker").style.display = "none";
+}
+
+function logout(event) {
+    event.stopPropagation();
+    localStorage.removeItem('lanMessengerUsername');
+    localStorage.removeItem('lanMessengerAvatar');
+    location.reload();
 }
 
 socket.on("disconnect", () => {
     document.getElementById("status").innerText = "Disconnected ✗";
     document.getElementById("status").style.color = "#f56565";
 });
+
+function fixVH() {
+  document.documentElement.style.setProperty('--vh', `${window.innerHeight * 0.01}px`);
+}
+fixVH();
+window.addEventListener('resize', fixVH);
 </script>
 </body>
 </html>

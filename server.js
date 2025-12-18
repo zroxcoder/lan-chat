@@ -21,7 +21,7 @@ app.use("/uploads", express.static(UPLOAD_DIR));
 
 app.use(fileUpload({
     createParentPath: true,
-    limits: { fileSize: 100 * 1024 * 1024 },
+    limits: { fileSize: 150 * 1024 * 1024 }, // Increased to 150MB
     debug: false,
     abortOnLimit: true,
     responseOnLimit: "File size limit exceeded"
@@ -34,6 +34,7 @@ let usersBySocket = {};
 let usersByName = {};
 let channels = { General: { password: null } };
 let messages = {};
+let channelMembers = {}; // Track members in channels
 
 // Helper: Get deterministic private room ID
 function getPrivateRoom(usernameA, usernameB) {
@@ -93,9 +94,13 @@ io.on("connection", socket => {
 
         console.log(`✅ ${username} registered and joined General`);
         
+        // Add to General members
+        if (!channelMembers["General"]) channelMembers["General"] = new Set();
+        channelMembers["General"].add(username);
+        
         socket.emit("joinSuccess");
         io.emit("updateUserList", usersBySocket);
-        socket.emit("channelList", Object.keys(channels));
+        io.emit("channelList", Object.keys(channels).map(c => ({ name: c, members: channelMembers[c]?.size || 0 })));
 
         const welcome = {
             type: "system",
@@ -146,13 +151,14 @@ io.on("connection", socket => {
             content: data.content,
             timestamp: new Date().toLocaleTimeString(),
             isPrivate: data.isPrivate,
-            room: data.isPrivate ? data.room : targetRoom
+            room: data.isPrivate ? data.room : targetRoom,
+            readBy: [user.username] // Sender has read it
         };
 
         messages[targetRoom] = messages[targetRoom] || [];
         messages[targetRoom].push(msg);
 
-        if (messages[targetRoom].length > 100) messages[targetRoom].shift();
+        if (messages[targetRoom].length > 200) messages[targetRoom].shift(); // Increased to 200
 
         io.to(targetRoom).emit("receiveMessage", msg);
     });
@@ -177,7 +183,18 @@ io.on("connection", socket => {
         socket.join(name);
         console.log(`✅ Joined channel: ${name}`);
 
-        if (messages[name]) messages[name].forEach(m => socket.emit("receiveMessage", m));
+        // Add to channel members
+        if (!channelMembers[name]) channelMembers[name] = new Set();
+        channelMembers[name].add(user.username);
+
+        if (messages[name]) {
+            const recentMessages = messages[name].slice(-20); // Send only last 20 messages
+            socket.emit("loadMessages", recentMessages.map(m => {
+                if (!m.readBy) m.readBy = [];
+                if (!m.readBy.includes(user.username)) m.readBy.push(user.username);
+                return m;
+            }));
+        }
 
         socket.emit("receiveMessage", {
             type: "system",
@@ -202,9 +219,10 @@ io.on("connection", socket => {
 
         channels[name] = { password: password || null };
         messages[name] = [];
+        channelMembers[name] = new Set([user.username]); // Initialize with creator
         
         console.log(`✅ Channel created successfully`);
-        io.emit("channelList", Object.keys(channels));
+        io.emit("channelList", Object.keys(channels).map(c => ({ name: c, members: channelMembers[c]?.size || 0 })));
         
         leaveAllRooms(socket, name);
         socket.join(name);
@@ -217,6 +235,14 @@ io.on("connection", socket => {
             timestamp: new Date().toLocaleTimeString(),
             isPrivate: false
         });
+    });
+
+    socket.on("updateAvatar", avatarUrl => {
+        const user = usersBySocket[socket.id];
+        if (user) {
+            user.avatar = avatarUrl;
+            io.emit("updateUserList", usersBySocket);
+        }
     });
 
     socket.on("joinPrivate", otherUsername => {
@@ -248,10 +274,13 @@ io.on("connection", socket => {
         if (otherSocket && !otherSocket.rooms.has(roomId)) otherSocket.join(roomId);
 
         if (messages[roomId]) {
-            messages[roomId].forEach(m => {
+            const recentMessages = messages[roomId].slice(-50); // Send only last 50 messages
+            socket.emit("loadMessages", recentMessages.map(m => {
+                if (!m.readBy) m.readBy = [];
+                if (!m.readBy.includes(user.username)) m.readBy.push(user.username);
                 const msgCopy = { ...m, room: otherUsername };
-                socket.emit("receiveMessage", msgCopy);
-            });
+                return msgCopy;
+            }));
         }
     });
 
@@ -261,7 +290,14 @@ io.on("connection", socket => {
             console.log(`\n❌ ${user.username} disconnected`);
             delete usersByName[user.username];
             delete usersBySocket[socket.id];
+            
+            // Remove from channel members
+            Object.keys(channelMembers).forEach(channel => {
+                channelMembers[channel].delete(user.username);
+            });
+            
             io.emit("updateUserList", usersBySocket);
+            io.emit("channelList", Object.keys(channels).map(c => ({ name: c, members: channelMembers[c]?.size || 0 })));
 
             const disconnect = {
                 type: "system",
