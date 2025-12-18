@@ -582,7 +582,7 @@ body {
         <div class="section-label" style="margin-top: 15px;">ONLINE USERS</div>
         <div id="users"></div>
     </div>
-
+    <div class="sidebar-overlay" id="sidebar-overlay"></div>
     <div class="chat-area">
         <div class="header">
             <div style="display:flex;align-items:center;gap:10px;min-width:0;flex:1;">
@@ -974,8 +974,28 @@ function switchChatUIOnly(title, privateChat) {
 }
 
 function closeSidebar() {
-    document.getElementById("sidebar").classList.remove("show");
+    const sidebar = document.getElementById("sidebar");
+    const overlay = document.getElementById("sidebar-overlay");
+    sidebar.classList.remove("show");
+    if (overlay) overlay.classList.remove("show");
 }
+
+function toggleSidebar() {
+    const sidebar = document.getElementById("sidebar");
+    const overlay = document.getElementById("sidebar-overlay");
+    const isShowing = sidebar.classList.contains("show");
+    
+    if (isShowing) {
+        closeSidebar();
+    } else {
+        sidebar.classList.add("show");
+        if (overlay) overlay.classList.add("show");
+        document.getElementById("sticker-picker").style.display = "none";
+    }
+}
+
+// Add event listener for overlay
+document.getElementById("sidebar-overlay").addEventListener('click', closeSidebar);
 
 function switchChat(title, privateChat = false) {
     if (currentRoom === title && isPrivate === privateChat) return;
@@ -1194,18 +1214,15 @@ function cleanupRecording() {
 
 function toggleSidebar() {
     const sidebar = document.getElementById("sidebar");
+    const overlay = document.getElementById("sidebar-overlay");
     const isShowing = sidebar.classList.contains("show");
     
     if (isShowing) {
-        sidebar.classList.remove("show");
-        document.removeEventListener('click', closeSidebarOnClickOutside, true);
+        closeSidebar();
     } else {
         sidebar.classList.add("show");
+        if (overlay) overlay.classList.add("show");
         document.getElementById("sticker-picker").style.display = "none";
-        // Add listener to close when clicking outside
-        setTimeout(() => {
-            document.addEventListener('click', closeSidebarOnClickOutside, true);
-        }, 10); // Small delay to prevent immediate trigger
     }
 }
 
