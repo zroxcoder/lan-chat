@@ -409,7 +409,25 @@ localStorage.clear()
 Open source - Use freely for your LAN
 
 ---
+## ☁️ cloudflared
+Add cloudflared for https and handle to https request making it access from everypart of world and different network. Server run in local machine and handle history text and uploaded file. 
+Domain name = chat.lanchat.me
+This only works when server was running in local machine or host server.
+Cloudflared RAY id= 9b3adfd63e50ede5 
+common error or show this type of text when you try to access this domain and server was closed
 
+What happened?
+
+You've requested a page on a website (chat.lanchat.me) that is on the Cloudflare network. The host (chat.lanchat.me) is configured as an Cloudflare Tunnel, and Cloudflare is currently unable to resolve it.
+What can I do?
+
+If you are a visitor of this website:
+Please try again in a few minutes.
+
+If you are the owner of this website:
+Ensure that cloudflared is running and can reach the network. You may wish to enable load balancing for your tunnel.
+This common issues !!
+I have add private SSL to which works when someone wants to use in same network without tunnel. Install git SSL then run it, now HTTPS active.
 ## 🎉 You're All Set!
 
 Your LAN Messenger is ready to use with all features:
