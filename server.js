@@ -1,6 +1,6 @@
-// server.js - FINAL VERSION (Without Call Features, HTTP mode for Cloudflare Tunnel)
+// server.js - UPDATED VERSION (Added Reply Support)
 const express = require("express");
-const http = require("http"); // Only HTTP now
+const http = require("http");
 const { Server } = require("socket.io");
 const fileUpload = require("express-fileupload");
 const path = require("path");
@@ -21,7 +21,7 @@ app.use("/uploads", express.static(UPLOAD_DIR));
 
 app.use(fileUpload({
     createParentPath: true,
-    limits: { fileSize: 150 * 1024 * 1024 }, // Increased to 150MB
+    limits: { fileSize: 150 * 1024 * 1024 },
     debug: false,
     abortOnLimit: true,
     responseOnLimit: "File size limit exceeded"
@@ -34,7 +34,7 @@ let usersBySocket = {};
 let usersByName = {};
 let channels = { General: { password: null } };
 let messages = {};
-let channelMembers = {}; // Track members in channels
+let channelMembers = {};
 
 // Helper: Get deterministic private room ID
 function getPrivateRoom(usernameA, usernameB) {
@@ -94,7 +94,6 @@ io.on("connection", socket => {
 
         console.log(`✅ ${username} registered and joined General`);
         
-        // Add to General members
         if (!channelMembers["General"]) channelMembers["General"] = new Set();
         channelMembers["General"].add(username);
         
@@ -152,13 +151,18 @@ io.on("connection", socket => {
             timestamp: new Date().toLocaleTimeString(),
             isPrivate: data.isPrivate,
             room: data.isPrivate ? data.room : targetRoom,
-            readBy: [user.username] // Sender has read it
+            readBy: [user.username]
         };
+
+        // Add reply data if present
+        if (data.replyTo) {
+            msg.replyTo = data.replyTo;
+        }
 
         messages[targetRoom] = messages[targetRoom] || [];
         messages[targetRoom].push(msg);
 
-        if (messages[targetRoom].length > 200) messages[targetRoom].shift(); // Increased to 200
+        if (messages[targetRoom].length > 200) messages[targetRoom].shift();
 
         io.to(targetRoom).emit("receiveMessage", msg);
     });
@@ -183,12 +187,11 @@ io.on("connection", socket => {
         socket.join(name);
         console.log(`✅ Joined channel: ${name}`);
 
-        // Add to channel members
         if (!channelMembers[name]) channelMembers[name] = new Set();
         channelMembers[name].add(user.username);
 
         if (messages[name]) {
-            const recentMessages = messages[name].slice(-20); // Send only last 20 messages
+            const recentMessages = messages[name].slice(-20);
             socket.emit("loadMessages", recentMessages.map(m => {
                 if (!m.readBy) m.readBy = [];
                 if (!m.readBy.includes(user.username)) m.readBy.push(user.username);
@@ -219,7 +222,7 @@ io.on("connection", socket => {
 
         channels[name] = { password: password || null };
         messages[name] = [];
-        channelMembers[name] = new Set([user.username]); // Initialize with creator
+        channelMembers[name] = new Set([user.username]);
         
         console.log(`✅ Channel created successfully`);
         io.emit("channelList", Object.keys(channels).map(c => ({ name: c, members: channelMembers[c]?.size || 0 })));
@@ -274,7 +277,7 @@ io.on("connection", socket => {
         if (otherSocket && !otherSocket.rooms.has(roomId)) otherSocket.join(roomId);
 
         if (messages[roomId]) {
-            const recentMessages = messages[roomId].slice(-50); // Send only last 50 messages
+            const recentMessages = messages[roomId].slice(-50);
             socket.emit("loadMessages", recentMessages.map(m => {
                 if (!m.readBy) m.readBy = [];
                 if (!m.readBy.includes(user.username)) m.readBy.push(user.username);
@@ -291,7 +294,6 @@ io.on("connection", socket => {
             delete usersByName[user.username];
             delete usersBySocket[socket.id];
             
-            // Remove from channel members
             Object.keys(channelMembers).forEach(channel => {
                 channelMembers[channel].delete(user.username);
             });

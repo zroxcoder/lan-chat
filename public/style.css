@@ -240,6 +240,7 @@ body {
     animation: slideIn 0.3s ease-out;
     backdrop-filter: blur(10px);
     border: 1px solid rgba(255,255,255,0.1);
+    position: relative;
 }
 
 .msg.self {
@@ -264,6 +265,75 @@ body {
     padding: 6px 12px;
     margin: 10px 0;
     max-width: 90%;
+}
+
+/* Reply Styles */
+.reply-container {
+    background: rgba(0,0,0,0.2);
+    border-left: 3px solid var(--accent);
+    padding: 6px 10px;
+    margin-bottom: 6px;
+    border-radius: 6px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.reply-container:hover {
+    background: rgba(0,0,0,0.3);
+}
+
+.reply-sender {
+    color: var(--accent);
+    font-weight: 600;
+    margin-bottom: 2px;
+    font-size: 11px;
+}
+
+.reply-content {
+    color: rgba(255,255,255,0.8);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#reply-preview {
+    flex-shrink: 0;
+    animation: slideInUp 0.2s ease-out;
+}
+
+.msg-actions {
+    position: absolute;
+    top: -8px;
+    right: 10px;
+    background: var(--glass);
+    backdrop-filter: blur(10px);
+    border-radius: 8px;
+    padding: 4px;
+    display: none;
+    gap: 4px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    border: 1px solid var(--glass-border);
+}
+
+.msg:hover .msg-actions {
+    display: flex;
+}
+
+.msg-action-btn {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    transition: all 0.2s;
+}
+
+.msg-action-btn:hover {
+    background: rgba(102, 126, 234, 0.2);
+    color: var(--primary);
 }
 
 .media-container {
@@ -455,6 +525,13 @@ body {
         max-height: 250px;
         padding: 8px;
     }
+
+    .msg-actions {
+        position: static;
+        display: flex !important;
+        margin-top: 6px;
+        justify-content: flex-end;
+    }
 }
 
 @media(max-width: 480px) {
@@ -522,6 +599,17 @@ body {
     from {
         opacity: 0;
         transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes slideInUp {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
     }
     to {
         opacity: 1;

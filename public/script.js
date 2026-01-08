@@ -11,6 +11,9 @@ let recordingStream = null;
 let isRecording = false;
 let recordingStartTime = 0;
 
+// Reply state
+let replyingTo = null;
+
 (function checkSession() {
     const storedUsername = localStorage.getItem('lanMessengerUsername');
     if (storedUsername) {
@@ -128,13 +131,21 @@ function sendMsg() {
     const msg = input.value.trim();
     if (!msg) return;
     
-    socket.emit("sendMessage", {
+    const messageData = {
         room: currentRoom,
         isPrivate,
         type: "text",
         content: msg
-    });
+    };
+
+    // Add reply data if replying
+    if (replyingTo) {
+        messageData.replyTo = replyingTo;
+    }
+    
+    socket.emit("sendMessage", messageData);
     input.value = "";
+    cancelReply();
 }
 
 socket.on("receiveMessage", msg => {
@@ -169,6 +180,7 @@ function renderMessage(msg) {
     const div = document.createElement("div");
     const isMe = msg.sender.username === myUsername;
     div.className = `msg ${msg.type === 'system' ? 'system' : (isMe ? 'self' : 'other')}`;
+    div.dataset.messageId = msg.timestamp + '_' + msg.sender.username; // Unique ID
     
     let content = msg.content;
     
@@ -183,6 +195,18 @@ function renderMessage(msg) {
         content = `<a href="${msg.content}" target="_blank" style="color:white;text-decoration:underline;">📄 ${fname}</a>`;
     }
 
+    // Build reply HTML if this message is a reply
+    let replyHtml = '';
+    if (msg.replyTo) {
+        const replyContent = msg.replyTo.content.length > 50 ? msg.replyTo.content.substring(0, 50) + '...' : msg.replyTo.content;
+        replyHtml = `
+            <div class="reply-container" onclick="scrollToMessage('${msg.replyTo.messageId}')">
+                <div class="reply-sender">${msg.replyTo.sender}</div>
+                <div class="reply-content">${escapeHtml(replyContent)}</div>
+            </div>
+        `;
+    }
+
     if (msg.type !== "system") {
         let ticks = '';
         if (isMe) {
@@ -192,8 +216,24 @@ function renderMessage(msg) {
                 ticks = '<span style="color:var(--text-muted);">✓</span>';
             }
         }
+
+        // Add reply button for non-system messages
+        const replyBtn = msg.type !== 'system' ? `
+            <div class="msg-actions">
+                <button class="msg-action-btn" onclick='startReply(${JSON.stringify({
+                    sender: msg.sender.username,
+                    content: msg.content,
+                    messageId: msg.timestamp + '_' + msg.sender.username
+                })})' title="Reply">
+                    <i class="fa-solid fa-reply"></i>
+                </button>
+            </div>
+        ` : '';
+
         div.innerHTML = `
+            ${replyBtn}
             <span class="sender-name">${isMe ? 'You' : msg.sender.username}</span>
+            ${replyHtml}
             ${content}
             <div style="font-size:10px;color:var(--text-muted);text-align:right;margin-top:3px;display:flex;justify-content:space-between;align-items:center;">
                 <span>${msg.timestamp}</span>
@@ -210,6 +250,43 @@ function renderMessage(msg) {
     renderTimeout = setTimeout(() => scrollMessages(), 100);
 }
 
+// Reply Functions
+function startReply(msgData) {
+    replyingTo = msgData;
+    const preview = document.getElementById('reply-preview');
+    const replyName = document.getElementById('reply-to-name');
+    const replyContent = document.getElementById('reply-to-content');
+    
+    replyName.textContent = msgData.sender;
+    const content = msgData.content.length > 50 ? msgData.content.substring(0, 50) + '...' : msgData.content;
+    replyContent.textContent = content;
+    
+    preview.style.display = 'block';
+    document.getElementById('msg-input').focus();
+}
+
+function cancelReply() {
+    replyingTo = null;
+    document.getElementById('reply-preview').style.display = 'none';
+}
+
+function scrollToMessage(messageId) {
+    const msgElement = document.querySelector(`[data-message-id="${messageId}"]`);
+    if (msgElement) {
+        msgElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        msgElement.style.background = 'rgba(102, 126, 234, 0.3)';
+        setTimeout(() => {
+            msgElement.style.background = '';
+        }, 2000);
+    }
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
 // Debounce input for speed
 let inputTimeout = null;
 document.getElementById("msg-input").addEventListener("input", () => {
@@ -224,6 +301,7 @@ function switchChatUIOnly(title, privateChat) {
     isPrivate = privateChat;
     updateActiveUserAndChannel(title, privateChat);
     closeSidebar();
+    cancelReply(); // Clear reply when switching chats
 }
 
 function closeSidebar() {
@@ -263,6 +341,7 @@ function switchChat(title, privateChat = false) {
     currentRoom = title;
     isPrivate = privateChat;
     updateActiveUserAndChannel(title, privateChat);
+    cancelReply(); // Clear reply when switching chats
 
     if (privateChat) {
         socket.emit("joinPrivate", title);
@@ -336,7 +415,13 @@ function uploadFile() {
             else if (data.type.startsWith("video/")) type = "video";
             else if (data.type.startsWith("audio/")) type = "audio";
             
-            socket.emit("sendMessage", { room: currentRoom, isPrivate, type, content: data.url });
+            const messageData = { room: currentRoom, isPrivate, type, content: data.url };
+            if (replyingTo) {
+                messageData.replyTo = replyingTo;
+            }
+            
+            socket.emit("sendMessage", messageData);
+            cancelReply();
         })
         .catch(err => {
             console.error("Upload error:", err);
@@ -387,7 +472,7 @@ async function startVoiceRecord() {
         
         const options = {
             mimeType,
-            audioBitsPerSecond: 192000 // Confirmed 192kbps
+            audioBitsPerSecond: 320000 // UPDATED: 320kbps for higher quality
         };
         
         mediaRecorder = new MediaRecorder(recordingStream, options);
@@ -426,7 +511,14 @@ async function startVoiceRecord() {
                 const res = await fetch("/upload", { method: "POST", body: formData });
                 const data = await res.json();
                 tempMsg.remove();
-                socket.emit("sendMessage", { room: currentRoom, isPrivate, type: "audio", content: data.url });
+                
+                const messageData = { room: currentRoom, isPrivate, type: "audio", content: data.url };
+                if (replyingTo) {
+                    messageData.replyTo = replyingTo;
+                }
+                
+                socket.emit("sendMessage", messageData);
+                cancelReply();
             } catch (err) {
                 tempMsg.remove();
                 console.error("Audio upload error:", err);
@@ -465,46 +557,47 @@ function cleanupRecording() {
     isRecording = false;
 }
 
-function toggleSidebar() {
-    const sidebar = document.getElementById("sidebar");
-    const overlay = document.getElementById("sidebar-overlay");
-    const isShowing = sidebar.classList.contains("show");
-    
-    if (isShowing) {
-        closeSidebar();
-    } else {
-        sidebar.classList.add("show");
-        if (overlay) overlay.classList.add("show");
-        document.getElementById("sticker-picker").style.display = "none";
-    }
-}
-
 function toggleStickerPicker() {
     const picker = document.getElementById("sticker-picker");
     picker.style.display = picker.style.display === "none" ? "block" : "none";
 }
 
 function sendSticker(sticker) {
-    socket.emit("sendMessage", {
+    const messageData = {
         room: currentRoom,
         isPrivate,
         type: "text",
         content: sticker
-    });
+    };
+    
+    if (replyingTo) {
+        messageData.replyTo = replyingTo;
+    }
+    
+    socket.emit("sendMessage", messageData);
     document.getElementById("sticker-picker").style.display = "none";
+    cancelReply();
 }
 
 function sendGif() {
     const gifUrl = document.getElementById("gif-url").value.trim();
     if (!gifUrl) return;
-    socket.emit("sendMessage", {
+    
+    const messageData = {
         room: currentRoom,
         isPrivate,
         type: "image",
         content: gifUrl
-    });
+    };
+    
+    if (replyingTo) {
+        messageData.replyTo = replyingTo;
+    }
+    
+    socket.emit("sendMessage", messageData);
     document.getElementById("gif-url").value = "";
     document.getElementById("sticker-picker").style.display = "none";
+    cancelReply();
 }
 
 function logout(event) {
