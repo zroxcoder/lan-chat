@@ -168,7 +168,7 @@ body {
     align-items: center;
     justify-content: space-between;
     border-bottom: 1px solid var(--separator);
-    height: 60px;
+    min-height: 60px;
     flex-shrink: 0;
     border-radius: 0 0 20px 20px;
 }
@@ -297,7 +297,7 @@ body {
     text-overflow: ellipsis;
 }
 
-#reply-preview {
+#reply-preview, #edit-preview {
     flex-shrink: 0;
     animation: slideInUp 0.2s ease-out;
 }
@@ -314,6 +314,7 @@ body {
     gap: 4px;
     box-shadow: 0 2px 8px rgba(0,0,0,0.2);
     border: 1px solid var(--glass-border);
+    z-index: 10;
 }
 
 .msg:hover .msg-actions {
@@ -334,6 +335,109 @@ body {
 .msg-action-btn:hover {
     background: rgba(102, 126, 234, 0.2);
     color: var(--primary);
+}
+
+/* Reactions */
+.reactions-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 6px;
+}
+
+.reaction-item {
+    background: rgba(0,0,0,0.3);
+    border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 12px;
+    padding: 2px 8px;
+    font-size: 12px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+    user-select: none;
+}
+
+.reaction-item:hover {
+    background: rgba(102, 126, 234, 0.3);
+    transform: scale(1.05);
+}
+
+.reaction-item.reacted {
+    background: rgba(102, 126, 234, 0.4);
+    border-color: var(--primary);
+}
+
+.reaction-emoji {
+    font-size: 14px;
+}
+
+.reaction-count {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text);
+}
+
+.reaction-option {
+    font-size: 24px;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 8px;
+    transition: all 0.2s;
+    display: inline-block;
+}
+
+.reaction-option:hover {
+    background: rgba(102, 126, 234, 0.3);
+    transform: scale(1.2);
+}
+
+/* Typing Indicator */
+#typing-indicator {
+    min-height: 14px;
+}
+
+.typing-dots {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    margin-left: 4px;
+}
+
+.typing-dot {
+    width: 4px;
+    height: 4px;
+    background: var(--accent);
+    border-radius: 50%;
+    animation: typingDot 1.4s infinite;
+}
+
+.typing-dot:nth-child(2) {
+    animation-delay: 0.2s;
+}
+
+.typing-dot:nth-child(3) {
+    animation-delay: 0.4s;
+}
+
+@keyframes typingDot {
+    0%, 60%, 100% {
+        transform: translateY(0);
+        opacity: 0.7;
+    }
+    30% {
+        transform: translateY(-6px);
+        opacity: 1;
+    }
+}
+
+/* Edited Indicator */
+.edited-indicator {
+    font-size: 10px;
+    color: var(--text-muted);
+    font-style: italic;
+    margin-left: 4px;
 }
 
 .media-container {
@@ -576,7 +680,7 @@ body {
     
     .header {
         padding: 12px;
-        height: 56px;
+        min-height: 56px;
     }
     
     #messages {

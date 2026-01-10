@@ -1,4 +1,4 @@
-// server.js - UPDATED VERSION (Added Reply Support)
+// server.js - WITH ALL NEW FEATURES
 const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
@@ -35,6 +35,7 @@ let usersByName = {};
 let channels = { General: { password: null } };
 let messages = {};
 let channelMembers = {};
+let typingUsers = {}; // { room: Set of usernames }
 
 // Helper: Get deterministic private room ID
 function getPrivateRoom(usernameA, usernameB) {
@@ -50,10 +51,14 @@ function leaveAllRooms(socket, exceptRoom) {
     });
 }
 
-// === HTTP Setup for Cloudflare Tunnel ===
+// Helper: Generate unique message ID
+function generateMessageId() {
+    return `${Date.now()}_${Math.random().toString(36).substring(7)}`;
+}
+
+// === HTTP Setup ===
 const PORT = process.env.PORT || 3000;
 const server = http.createServer(app);
-console.log("⚠️  Running in HTTP mode for Cloudflare Tunnel");
 
 // === Socket.IO Setup ===
 const io = new Server(server, {
@@ -107,12 +112,53 @@ io.on("connection", socket => {
             room: "General",
             sender: usersBySocket[socket.id],
             timestamp: new Date().toLocaleTimeString(),
-            isPrivate: false
+            isPrivate: false,
+            messageId: generateMessageId()
         };
 
         messages.General = messages.General || [];
         messages.General.push(welcome);
         io.to("General").emit("receiveMessage", welcome);
+    });
+
+    // Typing indicators
+    socket.on("typing", ({ room, isPrivate }) => {
+        const user = usersBySocket[socket.id];
+        if (!user) return;
+
+        let targetRoom = room;
+        if (isPrivate) {
+            targetRoom = getPrivateRoom(user.username, room);
+        }
+
+        if (!typingUsers[targetRoom]) typingUsers[targetRoom] = new Set();
+        typingUsers[targetRoom].add(user.username);
+
+        socket.to(targetRoom).emit("userTyping", {
+            username: user.username,
+            room,
+            isPrivate
+        });
+    });
+
+    socket.on("stopTyping", ({ room, isPrivate }) => {
+        const user = usersBySocket[socket.id];
+        if (!user) return;
+
+        let targetRoom = room;
+        if (isPrivate) {
+            targetRoom = getPrivateRoom(user.username, room);
+        }
+
+        if (typingUsers[targetRoom]) {
+            typingUsers[targetRoom].delete(user.username);
+        }
+
+        socket.to(targetRoom).emit("userStoppedTyping", {
+            username: user.username,
+            room,
+            isPrivate
+        });
     });
 
     socket.on("sendMessage", data => {
@@ -132,7 +178,8 @@ io.on("connection", socket => {
                     room: recipientUsername,
                     isPrivate: true,
                     sender: user,
-                    timestamp: new Date().toLocaleTimeString()
+                    timestamp: new Date().toLocaleTimeString(),
+                    messageId: generateMessageId()
                 });
             }
             
@@ -144,6 +191,8 @@ io.on("connection", socket => {
             if (recipientSocket && !recipientSocket.rooms.has(targetRoom)) recipientSocket.join(targetRoom);
         }
 
+        const messageId = generateMessageId();
+        
         const msg = {
             sender: user,
             type: data.type || "text",
@@ -151,7 +200,9 @@ io.on("connection", socket => {
             timestamp: new Date().toLocaleTimeString(),
             isPrivate: data.isPrivate,
             room: data.isPrivate ? data.room : targetRoom,
-            readBy: [user.username]
+            viewedBy: [user.username],
+            messageId,
+            reactions: {}
         };
 
         // Add reply data if present
@@ -165,6 +216,98 @@ io.on("connection", socket => {
         if (messages[targetRoom].length > 200) messages[targetRoom].shift();
 
         io.to(targetRoom).emit("receiveMessage", msg);
+
+        // Stop typing for this user
+        if (typingUsers[targetRoom]) {
+            typingUsers[targetRoom].delete(user.username);
+            socket.to(targetRoom).emit("userStoppedTyping", {
+                username: user.username,
+                room: data.room,
+                isPrivate: data.isPrivate
+            });
+        }
+    });
+
+    // Message viewed
+    socket.on("messageViewed", ({ messageId, room, isPrivate }) => {
+        const user = usersBySocket[socket.id];
+        if (!user) return;
+
+        let targetRoom = room;
+        if (isPrivate) {
+            const otherUsername = room;
+            targetRoom = getPrivateRoom(user.username, otherUsername);
+        }
+
+        if (messages[targetRoom]) {
+            const message = messages[targetRoom].find(m => m.messageId === messageId);
+            if (message && !message.viewedBy.includes(user.username)) {
+                message.viewedBy.push(user.username);
+                
+                // Notify sender about view
+                io.to(targetRoom).emit("messageViewedUpdate", {
+                    messageId,
+                    viewedBy: message.viewedBy
+                });
+            }
+        }
+    });
+
+    // Edit message
+    socket.on("editMessage", ({ messageId, newContent, room, isPrivate }) => {
+        const user = usersBySocket[socket.id];
+        if (!user) return;
+
+        let targetRoom = room;
+        if (isPrivate) {
+            targetRoom = getPrivateRoom(user.username, room);
+        }
+
+        if (messages[targetRoom]) {
+            const message = messages[targetRoom].find(m => m.messageId === messageId);
+            if (message && message.sender.username === user.username) {
+                message.content = newContent;
+                message.edited = true;
+                
+                io.to(targetRoom).emit("messageEdited", {
+                    messageId,
+                    newContent
+                });
+            }
+        }
+    });
+
+    // Add reaction
+    socket.on("addReaction", ({ messageId, emoji, room, isPrivate }) => {
+        const user = usersBySocket[socket.id];
+        if (!user) return;
+
+        let targetRoom = room;
+        if (isPrivate) {
+            targetRoom = getPrivateRoom(user.username, room);
+        }
+
+        if (messages[targetRoom]) {
+            const message = messages[targetRoom].find(m => m.messageId === messageId);
+            if (message) {
+                if (!message.reactions) message.reactions = {};
+                if (!message.reactions[emoji]) message.reactions[emoji] = [];
+                
+                const userIndex = message.reactions[emoji].indexOf(user.username);
+                if (userIndex > -1) {
+                    // Remove reaction
+                    message.reactions[emoji].splice(userIndex, 1);
+                } else {
+                    // Add reaction
+                    message.reactions[emoji].push(user.username);
+                }
+                
+                io.to(targetRoom).emit("reactionUpdate", {
+                    messageId,
+                    reactions: message.reactions
+                });
+            }
+        }
     });
 
     socket.on("joinChannel", ({ name, password }) => {
@@ -193,8 +336,7 @@ io.on("connection", socket => {
         if (messages[name]) {
             const recentMessages = messages[name].slice(-20);
             socket.emit("loadMessages", recentMessages.map(m => {
-                if (!m.readBy) m.readBy = [];
-                if (!m.readBy.includes(user.username)) m.readBy.push(user.username);
+                if (!m.viewedBy) m.viewedBy = [];
                 return m;
             }));
         }
@@ -205,7 +347,8 @@ io.on("connection", socket => {
             room: name,
             sender: user,
             timestamp: new Date().toLocaleTimeString(),
-            isPrivate: false
+            isPrivate: false,
+            messageId: generateMessageId()
         });
     });
 
@@ -236,7 +379,8 @@ io.on("connection", socket => {
             room: name,
             sender: user,
             timestamp: new Date().toLocaleTimeString(),
-            isPrivate: false
+            isPrivate: false,
+            messageId: generateMessageId()
         });
     });
 
@@ -263,7 +407,8 @@ io.on("connection", socket => {
                 room: otherUsername,
                 sender: user,
                 timestamp: new Date().toLocaleTimeString(),
-                isPrivate: true
+                isPrivate: true,
+                messageId: generateMessageId()
             });
         }
 
@@ -279,8 +424,7 @@ io.on("connection", socket => {
         if (messages[roomId]) {
             const recentMessages = messages[roomId].slice(-50);
             socket.emit("loadMessages", recentMessages.map(m => {
-                if (!m.readBy) m.readBy = [];
-                if (!m.readBy.includes(user.username)) m.readBy.push(user.username);
+                if (!m.viewedBy) m.viewedBy = [];
                 const msgCopy = { ...m, room: otherUsername };
                 return msgCopy;
             }));
@@ -291,6 +435,19 @@ io.on("connection", socket => {
         const user = usersBySocket[socket.id];
         if (user) {
             console.log(`\n❌ ${user.username} disconnected`);
+            
+            // Remove from typing users
+            Object.keys(typingUsers).forEach(room => {
+                if (typingUsers[room].has(user.username)) {
+                    typingUsers[room].delete(user.username);
+                    socket.to(room).emit("userStoppedTyping", {
+                        username: user.username,
+                        room,
+                        isPrivate: false
+                    });
+                }
+            });
+            
             delete usersByName[user.username];
             delete usersBySocket[socket.id];
             
@@ -307,7 +464,8 @@ io.on("connection", socket => {
                 room: "General",
                 sender: user,
                 timestamp: new Date().toLocaleTimeString(),
-                isPrivate: false
+                isPrivate: false,
+                messageId: generateMessageId()
             };
             
             messages.General = messages.General || [];
@@ -347,10 +505,12 @@ app.get("/", (req, res) => {
 // === START SERVER ===
 server.listen(PORT, "0.0.0.0", () => {
     console.log(`\n${"=".repeat(60)}`);
-    console.log(`🚀 LAN MESSENGER SERVER STARTED`);
+    console.log(`🚀 LAN MESSENGER SERVER STARTED - WITH NEW FEATURES!`);
     console.log(`${"=".repeat(60)}`);
     console.log(`📡 Protocol: HTTP`);
     console.log(`🔌 Port: ${PORT}`);
+    console.log(`${"=".repeat(60)}`);
+    console.log(`\n✨ NEW FEATURES:`);
     console.log(`${"=".repeat(60)}`);
     console.log(`\n🌐 ACCESS FROM:\n`);
     console.log(`   📱 This device: http://localhost:${PORT}`);
@@ -364,8 +524,7 @@ server.listen(PORT, "0.0.0.0", () => {
         });
     });
 
-    console.log(`\n⚠️  RUNNING IN HTTP MODE FOR CLOUDFLARE TUNNEL`);
-    console.log(`${"=".repeat(60)}\n`);
+    console.log(`\n${"=".repeat(60)}\n`);
 });
 
 process.on('uncaughtException', (err) => console.error('❌ Uncaught Exception:', err));

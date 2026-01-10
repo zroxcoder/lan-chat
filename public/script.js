@@ -11,8 +11,24 @@ let recordingStream = null;
 let isRecording = false;
 let recordingStartTime = 0;
 
-// Reply state
+// Reply & Edit state
 let replyingTo = null;
+let editingMessage = null;
+
+// Typing indicator state
+let typingTimeout = null;
+let isTyping = false;
+let currentTypers = new Set();
+
+// Reaction state
+let currentReactionMessage = null;
+
+// Mobile action menu state
+let currentActionMessageId = null;
+let currentActionMessageData = null;
+
+// Detect if mobile
+const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth <= 768;
 
 (function checkSession() {
     const storedUsername = localStorage.getItem('lanMessengerUsername');
@@ -122,7 +138,54 @@ socket.on("channelList", list => {
 function handleEnter(e) {
     if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
-        sendMsg();
+        if (editingMessage) {
+            saveEdit();
+        } else {
+            sendMsg();
+        }
+    }
+}
+
+// Typing Indicator
+function handleTyping() {
+    if (!isTyping) {
+        isTyping = true;
+        socket.emit("typing", { room: currentRoom, isPrivate });
+    }
+    
+    clearTimeout(typingTimeout);
+    typingTimeout = setTimeout(() => {
+        isTyping = false;
+        socket.emit("stopTyping", { room: currentRoom, isPrivate });
+    }, 2000);
+}
+
+socket.on("userTyping", ({ username, room, isPrivate: isPrivateRoom }) => {
+    if ((isPrivateRoom && room === currentRoom && isPrivate) || (!isPrivateRoom && room === currentRoom && !isPrivate)) {
+        currentTypers.add(username);
+        updateTypingIndicator();
+    }
+});
+
+socket.on("userStoppedTyping", ({ username, room, isPrivate: isPrivateRoom }) => {
+    if ((isPrivateRoom && room === currentRoom && isPrivate) || (!isPrivateRoom && room === currentRoom && !isPrivate)) {
+        currentTypers.delete(username);
+        updateTypingIndicator();
+    }
+});
+
+function updateTypingIndicator() {
+    const indicator = document.getElementById("typing-indicator");
+    if (currentTypers.size === 0) {
+        indicator.innerHTML = "";
+    } else if (currentTypers.size === 1) {
+        const typer = Array.from(currentTypers)[0];
+        indicator.innerHTML = `${typer} is typing<span class="typing-dots"><span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span></span>`;
+    } else if (currentTypers.size === 2) {
+        const typers = Array.from(currentTypers);
+        indicator.innerHTML = `${typers[0]} and ${typers[1]} are typing<span class="typing-dots"><span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span></span>`;
+    } else {
+        indicator.innerHTML = `Several people are typing<span class="typing-dots"><span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span></span>`;
     }
 }
 
@@ -146,6 +209,12 @@ function sendMsg() {
     socket.emit("sendMessage", messageData);
     input.value = "";
     cancelReply();
+    
+    // Stop typing
+    if (isTyping) {
+        isTyping = false;
+        socket.emit("stopTyping", { room: currentRoom, isPrivate });
+    }
 }
 
 socket.on("receiveMessage", msg => {
@@ -161,11 +230,70 @@ socket.on("receiveMessage", msg => {
     if (!shouldShow) return;
     renderMessage(msg);
     scrollMessages();
+    
+    // Mark as viewed immediately when message appears (if not sent by me)
+    if (msg.sender.username !== myUsername && msg.messageId) {
+        setTimeout(() => {
+            socket.emit("messageViewed", {
+                messageId: msg.messageId,
+                room: currentRoom,
+                isPrivate: isPrivate
+            });
+        }, 100);
+    }
 });
 
 socket.on("loadMessages", msgs => {
     msgs.forEach(msg => renderMessage(msg));
     scrollMessages();
+    
+    // Mark all loaded messages as viewed (except mine)
+    setTimeout(() => {
+        msgs.forEach(msg => {
+            if (msg.sender.username !== myUsername && msg.messageId) {
+                socket.emit("messageViewed", {
+                    messageId: msg.messageId,
+                    room: currentRoom,
+                    isPrivate: isPrivate
+                });
+            }
+        });
+    }, 500);
+});
+
+// Message viewed update - FIXED
+socket.on("messageViewedUpdate", ({ messageId, viewedBy }) => {
+    const msgElement = document.querySelector(`[data-message-id="${messageId}"]`);
+    if (msgElement) {
+        const ticksElement = msgElement.querySelector('.read-ticks');
+        if (ticksElement) {
+            // Check if more than just the sender has viewed it
+            if (viewedBy && viewedBy.length > 1) {
+                ticksElement.innerHTML = '<span style="color:#48bb78;">✓✓</span>'; // Blue double ticks
+            } else {
+                ticksElement.innerHTML = '<span style="color:rgba(255,255,255,0.5);">✓✓</span>'; // Gray double ticks (sent)
+            }
+        }
+    }
+});
+
+// Message edited update
+socket.on("messageEdited", ({ messageId, newContent }) => {
+    const msgElement = document.querySelector(`[data-message-id="${messageId}"]`);
+    if (msgElement) {
+        const contentElement = msgElement.querySelector('.msg-content');
+        if (contentElement) {
+            contentElement.innerHTML = escapeHtml(newContent) + ' <span class="edited-indicator">(edited)</span>';
+        }
+    }
+});
+
+// Reaction update
+socket.on("reactionUpdate", ({ messageId, reactions }) => {
+    const msgElement = document.querySelector(`[data-message-id="${messageId}"]`);
+    if (msgElement) {
+        updateReactionsDisplay(msgElement, reactions);
+    }
 });
 
 let messageQueue = [];
@@ -180,7 +308,7 @@ function renderMessage(msg) {
     const div = document.createElement("div");
     const isMe = msg.sender.username === myUsername;
     div.className = `msg ${msg.type === 'system' ? 'system' : (isMe ? 'self' : 'other')}`;
-    div.dataset.messageId = msg.timestamp + '_' + msg.sender.username; // Unique ID
+    div.dataset.messageId = msg.messageId || (msg.timestamp + '_' + msg.sender.username);
     
     let content = msg.content;
     
@@ -210,36 +338,82 @@ function renderMessage(msg) {
     if (msg.type !== "system") {
         let ticks = '';
         if (isMe) {
-            if (msg.readBy && msg.readBy.length > 1) {
-                ticks = '<span style="color:#48bb78;">✓✓</span>';
+            // Show gray double ticks for sent, blue for viewed
+            if (msg.viewedBy && msg.viewedBy.length > 1) {
+                ticks = '<span class="read-ticks" style="color:#48bb78;">✓✓</span>';
             } else {
-                ticks = '<span style="color:var(--text-muted);">✓</span>';
+                ticks = '<span class="read-ticks" style="color:rgba(255,255,255,0.5);">✓✓</span>';
             }
         }
 
-        // Add reply button for non-system messages
-        const replyBtn = msg.type !== 'system' ? `
-            <div class="msg-actions">
-                <button class="msg-action-btn" onclick='startReply(${JSON.stringify({
-                    sender: msg.sender.username,
-                    content: msg.content,
-                    messageId: msg.timestamp + '_' + msg.sender.username
-                })})' title="Reply">
-                    <i class="fa-solid fa-reply"></i>
-                </button>
-            </div>
-        ` : '';
+        const canEdit = isMe && msg.type === 'text';
+        
+        // Desktop action buttons (hover)
+        let desktopActions = '';
+        if (!isMobile) {
+            desktopActions = `
+                <div class="msg-actions">
+                    ${canEdit ? `<button class="msg-action-btn" onclick='startEdit(${JSON.stringify({
+                        messageId: div.dataset.messageId,
+                        content: msg.content
+                    })})' title="Edit">
+                        <i class="fa-solid fa-edit"></i>
+                    </button>` : ''}
+                    <button class="msg-action-btn" onclick='startReply(${JSON.stringify({
+                        sender: msg.sender.username,
+                        content: msg.content,
+                        messageId: div.dataset.messageId
+                    })})' title="Reply">
+                        <i class="fa-solid fa-reply"></i>
+                    </button>
+                    <button class="msg-action-btn" onclick='showReactionPicker("${div.dataset.messageId}", event)' title="React">
+                        <i class="fa-solid fa-smile"></i>
+                    </button>
+                </div>
+            `;
+        }
+
+        const editedIndicator = msg.edited ? ' <span class="edited-indicator">(edited)</span>' : '';
 
         div.innerHTML = `
-            ${replyBtn}
+            ${desktopActions}
             <span class="sender-name">${isMe ? 'You' : msg.sender.username}</span>
             ${replyHtml}
-            ${content}
+            <span class="msg-content">${content}${editedIndicator}</span>
             <div style="font-size:10px;color:var(--text-muted);text-align:right;margin-top:3px;display:flex;justify-content:space-between;align-items:center;">
                 <span>${msg.timestamp}</span>
                 ${ticks}
             </div>
+            <div class="reactions-container"></div>
         `;
+
+        // Add mobile long-press for actions
+        if (isMobile) {
+            let pressTimer;
+            div.addEventListener('touchstart', (e) => {
+                pressTimer = setTimeout(() => {
+                    showMobileActionMenu(div.dataset.messageId, {
+                        canEdit,
+                        sender: msg.sender.username,
+                        content: msg.content,
+                        messageId: div.dataset.messageId
+                    });
+                }, 500); // 500ms long press
+            });
+            
+            div.addEventListener('touchend', () => {
+                clearTimeout(pressTimer);
+            });
+            
+            div.addEventListener('touchmove', () => {
+                clearTimeout(pressTimer);
+            });
+        }
+
+        // Update reactions if any
+        if (msg.reactions) {
+            updateReactionsDisplay(div, msg.reactions);
+        }
     } else {
         div.innerHTML = content;
     }
@@ -248,6 +422,111 @@ function renderMessage(msg) {
     // Debounced scroll
     clearTimeout(renderTimeout);
     renderTimeout = setTimeout(() => scrollMessages(), 100);
+}
+
+// Mobile Action Menu
+function showMobileActionMenu(messageId, msgData) {
+    currentActionMessageId = messageId;
+    currentActionMessageData = msgData;
+    
+    const menu = document.getElementById('mobile-action-menu');
+    const overlay = document.getElementById('mobile-menu-overlay');
+    const buttonsContainer = document.getElementById('mobile-action-buttons');
+    
+    buttonsContainer.innerHTML = '';
+    
+    // Reply button
+    const replyBtn = document.createElement('button');
+    replyBtn.innerHTML = '<i class="fa-solid fa-reply"></i> Reply';
+    replyBtn.style.cssText = 'width:100%;padding:12px;background:var(--glass);color:var(--text);border:none;border-radius:10px;font-weight:600;display:flex;align-items:center;gap:10px;justify-content:center;';
+    replyBtn.onclick = () => {
+        startReply(msgData);
+        closeMobileMenu();
+    };
+    buttonsContainer.appendChild(replyBtn);
+    
+    // React button
+    const reactBtn = document.createElement('button');
+    reactBtn.innerHTML = '<i class="fa-solid fa-smile"></i> React';
+    reactBtn.style.cssText = 'width:100%;padding:12px;background:var(--glass);color:var(--text);border:none;border-radius:10px;font-weight:600;display:flex;align-items:center;gap:10px;justify-content:center;';
+    reactBtn.onclick = () => {
+        closeMobileMenu();
+        setTimeout(() => {
+            showReactionPicker(messageId, { preventDefault: () => {}, stopPropagation: () => {} });
+        }, 300);
+    };
+    buttonsContainer.appendChild(reactBtn);
+    
+    // Edit button (only for own text messages)
+    if (msgData.canEdit) {
+        const editBtn = document.createElement('button');
+        editBtn.innerHTML = '<i class="fa-solid fa-edit"></i> Edit';
+        editBtn.style.cssText = 'width:100%;padding:12px;background:var(--glass);color:var(--text);border:none;border-radius:10px;font-weight:600;display:flex;align-items:center;gap:10px;justify-content:center;';
+        editBtn.onclick = () => {
+            startEdit({ messageId: msgData.messageId, content: msgData.content });
+            closeMobileMenu();
+        };
+        buttonsContainer.appendChild(editBtn);
+    }
+    
+    menu.style.display = 'block';
+    overlay.style.display = 'block';
+    
+    // Vibrate if supported
+    if (navigator.vibrate) {
+        navigator.vibrate(50);
+    }
+}
+
+function closeMobileMenu() {
+    document.getElementById('mobile-action-menu').style.display = 'none';
+    document.getElementById('mobile-menu-overlay').style.display = 'none';
+    currentActionMessageId = null;
+    currentActionMessageData = null;
+}
+
+// Edit Functions
+function startEdit(msgData) {
+    editingMessage = msgData;
+    const input = document.getElementById('msg-input');
+    const editPreview = document.getElementById('edit-preview');
+    const sendBtn = document.getElementById('send-btn');
+    
+    input.value = msgData.content;
+    editPreview.style.display = 'block';
+    sendBtn.innerHTML = '<i class="fa-solid fa-check"></i>';
+    sendBtn.style.color = 'var(--accent)';
+    input.focus();
+    
+    cancelReply(); // Can't reply and edit at same time
+}
+
+function cancelEdit() {
+    editingMessage = null;
+    document.getElementById('edit-preview').style.display = 'none';
+    document.getElementById('msg-input').value = '';
+    const sendBtn = document.getElementById('send-btn');
+    sendBtn.innerHTML = '<i class="fa-solid fa-paper-plane"></i>';
+    sendBtn.style.color = '';
+}
+
+function saveEdit() {
+    const input = document.getElementById('msg-input');
+    const newContent = input.value.trim();
+    
+    if (!newContent) {
+        cancelEdit();
+        return;
+    }
+    
+    socket.emit("editMessage", {
+        messageId: editingMessage.messageId,
+        newContent,
+        room: currentRoom,
+        isPrivate
+    });
+    
+    cancelEdit();
 }
 
 // Reply Functions
@@ -263,6 +542,8 @@ function startReply(msgData) {
     
     preview.style.display = 'block';
     document.getElementById('msg-input').focus();
+    
+    cancelEdit(); // Can't reply and edit at same time
 }
 
 function cancelReply() {
@@ -279,6 +560,97 @@ function scrollToMessage(messageId) {
             msgElement.style.background = '';
         }, 2000);
     }
+}
+
+// Reaction Functions - FIXED for mobile
+function showReactionPicker(messageId, event) {
+    event.stopPropagation();
+    event.preventDefault();
+    
+    const picker = document.getElementById('reaction-picker');
+    currentReactionMessage = messageId;
+    
+    if (isMobile) {
+        // Center picker on mobile
+        picker.style.left = '50%';
+        picker.style.top = '50%';
+        picker.style.transform = 'translate(-50%, -50%)';
+        picker.style.position = 'fixed';
+    } else {
+        // Position picker near the message on desktop
+        const msgElement = document.querySelector(`[data-message-id="${messageId}"]`);
+        if (msgElement) {
+            const rect = msgElement.getBoundingClientRect();
+            picker.style.left = Math.min(rect.left, window.innerWidth - 300) + 'px';
+            picker.style.top = (rect.bottom + 5) + 'px';
+            picker.style.transform = 'none';
+            picker.style.position = 'fixed';
+        }
+    }
+    
+    picker.style.display = 'block';
+    
+    // Close on outside click
+    setTimeout(() => {
+        document.addEventListener('click', closeReactionPicker, { once: true });
+        document.addEventListener('touchstart', closeReactionPicker, { once: true });
+    }, 100);
+}
+
+function closeReactionPicker(e) {
+    if (e && e.target.closest('#reaction-picker')) return;
+    document.getElementById('reaction-picker').style.display = 'none';
+    currentReactionMessage = null;
+}
+
+function addReaction(emoji) {
+    if (!currentReactionMessage) return;
+    
+    socket.emit("addReaction", {
+        messageId: currentReactionMessage,
+        emoji,
+        room: currentRoom,
+        isPrivate
+    });
+    
+    closeReactionPicker();
+}
+
+function updateReactionsDisplay(msgElement, reactions) {
+    const container = msgElement.querySelector('.reactions-container');
+    if (!container) return;
+    
+    container.innerHTML = '';
+    
+    Object.entries(reactions).forEach(([emoji, users]) => {
+        if (users.length === 0) return;
+        
+        const reactionItem = document.createElement('div');
+        reactionItem.className = 'reaction-item';
+        if (users.includes(myUsername)) {
+            reactionItem.classList.add('reacted');
+        }
+        
+        reactionItem.innerHTML = `
+            <span class="reaction-emoji">${emoji}</span>
+            <span class="reaction-count">${users.length}</span>
+        `;
+        
+        // Toggle reaction on click
+        reactionItem.onclick = () => {
+            socket.emit("addReaction", {
+                messageId: msgElement.dataset.messageId,
+                emoji,
+                room: currentRoom,
+                isPrivate
+            });
+        };
+        
+        // Show who reacted on hover
+        reactionItem.title = users.join(', ');
+        
+        container.appendChild(reactionItem);
+    });
 }
 
 function escapeHtml(text) {
@@ -301,7 +673,10 @@ function switchChatUIOnly(title, privateChat) {
     isPrivate = privateChat;
     updateActiveUserAndChannel(title, privateChat);
     closeSidebar();
-    cancelReply(); // Clear reply when switching chats
+    cancelReply();
+    cancelEdit();
+    currentTypers.clear();
+    updateTypingIndicator();
 }
 
 function closeSidebar() {
@@ -341,7 +716,10 @@ function switchChat(title, privateChat = false) {
     currentRoom = title;
     isPrivate = privateChat;
     updateActiveUserAndChannel(title, privateChat);
-    cancelReply(); // Clear reply when switching chats
+    cancelReply();
+    cancelEdit();
+    currentTypers.clear();
+    updateTypingIndicator();
 
     if (privateChat) {
         socket.emit("joinPrivate", title);
@@ -381,7 +759,6 @@ function uploadAvatar() {
             const avatarUrl = data.url;
             localStorage.setItem('lanMessengerAvatar', avatarUrl);
             document.getElementById("current-avatar").src = avatarUrl;
-            // Update user list
             socket.emit("updateAvatar", avatarUrl);
         })
         .catch(err => {
@@ -472,7 +849,7 @@ async function startVoiceRecord() {
         
         const options = {
             mimeType,
-            audioBitsPerSecond: 320000 // UPDATED: 320kbps for higher quality
+            audioBitsPerSecond: 320000 // 320kbps quality
         };
         
         mediaRecorder = new MediaRecorder(recordingStream, options);

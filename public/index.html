@@ -53,7 +53,10 @@
                 <button class="icon-btn" id="menu-btn" onclick="toggleSidebar()">
                     <i class="fa-solid fa-bars"></i>
                 </button>
-                <div id="chat-title" style="font-weight:700;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">General</div>
+                <div style="flex:1;min-width:0;">
+                    <div id="chat-title" style="font-weight:700;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">General</div>
+                    <div id="typing-indicator" style="font-size:11px;color:var(--accent);min-height:14px;"></div>
+                </div>
             </div>
         </div>
 
@@ -72,21 +75,59 @@
             </div>
         </div>
 
+        <!-- Edit Preview Area -->
+        <div id="edit-preview" style="display:none;">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--glass);backdrop-filter:blur(10px);border-left:3px solid var(--accent);margin:0 12px;">
+                <div style="flex:1;min-width:0;">
+                    <div style="font-size:11px;color:var(--accent);font-weight:600;margin-bottom:2px;">
+                        <i class="fa-solid fa-edit"></i> Editing message
+                    </div>
+                </div>
+                <button class="icon-btn" onclick="cancelEdit()" style="flex-shrink:0;">
+                    <i class="fa-solid fa-times"></i>
+                </button>
+            </div>
+        </div>
+
         <div class="input-area">
             <button class="icon-btn" onclick="document.getElementById('file-input').click()" title="Upload file">
                 <i class="fa-solid fa-paperclip"></i>
             </button>
-            <input id="msg-input" placeholder="Type a message..." onkeypress="handleEnter(event)">
+            <input id="msg-input" placeholder="Type a message..." onkeypress="handleEnter(event)" oninput="handleTyping()">
             <button class="icon-btn" onclick="toggleStickerPicker()" title="Send sticker/GIF">
                 <i class="fa-solid fa-smile"></i>
             </button>
             <button class="icon-btn" id="mic-btn" onmousedown="startVoiceRecord()" onmouseup="stopVoiceRecord()" onmouseleave="stopVoiceRecord()" ontouchstart="startVoiceRecord()" ontouchend="stopVoiceRecord()" ontouchcancel="stopVoiceRecord()" title="Hold to record voice">
                 <i class="fa-solid fa-microphone"></i>
             </button>
-            <button class="icon-btn" onclick="sendMsg()" title="Send message">
+            <button class="icon-btn" onclick="sendMsg()" title="Send message" id="send-btn">
                 <i class="fa-solid fa-paper-plane"></i>
             </button>
         </div>
+
+        <!-- Reaction Picker -->
+        <div id="reaction-picker" style="display:none;position:fixed;background:var(--glass);backdrop-filter:blur(10px);border-radius:12px;padding:10px;z-index:1000;box-shadow:0 4px 12px rgba(0,0,0,0.3);border:1px solid var(--glass-border);">
+            <div style="display:flex;gap:6px;flex-wrap:wrap;max-width:280px;">
+                <span class="reaction-option" onclick="addReaction('❤️')">❤️</span>
+                <span class="reaction-option" onclick="addReaction('👍')">👍</span>
+                <span class="reaction-option" onclick="addReaction('😂')">😂</span>
+                <span class="reaction-option" onclick="addReaction('😮')">😮</span>
+                <span class="reaction-option" onclick="addReaction('😢')">😢</span>
+                <span class="reaction-option" onclick="addReaction('🔥')">🔥</span>
+                <span class="reaction-option" onclick="addReaction('🎉')">🎉</span>
+                <span class="reaction-option" onclick="addReaction('👏')">👏</span>
+            </div>
+        </div>
+
+        <!-- Mobile Action Menu -->
+        <div id="mobile-action-menu" style="display:none;position:fixed;bottom:0;left:0;right:0;background:var(--glass);backdrop-filter:blur(20px);border-top:1px solid var(--separator);padding:15px;z-index:1001;border-radius:20px 20px 0 0;">
+            <div style="text-align:center;margin-bottom:10px;color:var(--text-muted);font-size:12px;font-weight:600;">Message Options</div>
+            <div style="display:flex;flex-direction:column;gap:8px;" id="mobile-action-buttons">
+            </div>
+            <button onclick="closeMobileMenu()" style="width:100%;padding:10px;margin-top:10px;background:var(--danger);color:white;border:none;border-radius:10px;font-weight:600;">Cancel</button>
+        </div>
+        <div id="mobile-menu-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;" onclick="closeMobileMenu()"></div>
+
         <div id="sticker-picker" style="display:none;position:absolute;bottom:60px;right:10px;background:var(--glass);backdrop-filter:blur(10px);border-radius:12px;padding:10px;max-width:300px;z-index:1000;">
             <div style="display:flex;flex-wrap:wrap;gap:5px;max-height:200px;overflow-y:auto;">
                 <span onclick="sendSticker('😀')" style="cursor:pointer;font-size:24px;">😀</span>
